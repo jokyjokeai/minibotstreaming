@@ -622,7 +622,17 @@ astsbindir => /usr/sbin
 ; CRITIQUE: transmit_silence DOIT être activé pour l'enregistrement
 transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
 """
-    
+
+    # Logger.conf Configuration - Pour activer les logs Asterisk
+    logger_conf = """[general]
+dateformat=%F %T
+
+[logfiles]
+console => notice,warning,error
+messages => notice,warning,error
+full => notice,warning,error,debug,verbose
+"""
+
     # Écriture des fichiers
     configs = {
         '/etc/asterisk/pjsip.conf': pjsip_conf,
@@ -630,7 +640,8 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
         '/etc/asterisk/ari.conf': ari_conf,
         '/etc/asterisk/extensions.conf': extensions_conf,
         '/etc/asterisk/amd.conf': amd_conf,
-        '/etc/asterisk/asterisk.conf': asterisk_conf  # AJOUT CRITIQUE pour transmit_silence
+        '/etc/asterisk/asterisk.conf': asterisk_conf,  # AJOUT CRITIQUE pour transmit_silence
+        '/etc/asterisk/logger.conf': logger_conf  # AJOUT pour logging Asterisk
     }
     
     try:
