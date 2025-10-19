@@ -39,10 +39,9 @@ class WhisperService:
             if not model_cached:
                 logger.info(f"📥 Model '{model_name}' will be downloaded on first use")
 
-            # Use CPU (optimal for VPS deployment)
-            # CPU is sufficient: 3-4s transcription, no CUDA issues, works everywhere
-            device = "cpu"
-            compute_type = "int8"  # Optimal pour CPU
+            # Use config from .env (configured by install.py or start_system.sh)
+            device = config.WHISPER_DEVICE
+            compute_type = config.WHISPER_COMPUTE_TYPE
 
             logger.info(f"🤖 Initializing Whisper model: {config.WHISPER_MODEL} on {device}")
             logger.info(f"   Device: {device}")

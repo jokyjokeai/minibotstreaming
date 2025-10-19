@@ -445,13 +445,15 @@ def get_whisper_config():
     return model
 
 def detect_whisper_device():
-    """Détecte si GPU avec cuDNN est disponible pour Whisper"""
+    """Détecte si GPU avec cuDNN est disponible pour Whisper - INSTALLE AUTOMATIQUEMENT cuDNN si besoin"""
     try:
         # Vérifier si PyTorch détecte CUDA
         success, output = run_command("python3 -c 'import torch; print(torch.cuda.is_available())'", capture=True, check=False)
         if not success or "True" not in output:
             log("💻 GPU non détecté, utilisation CPU pour Whisper", "info")
             return "cpu", "int8"
+
+        log("🎮 GPU CUDA détecté !", "success")
 
         # GPU détecté, vérifier cuDNN 9.x (système + pip)
         # 1. Chercher dans /usr (install système)
@@ -472,10 +474,27 @@ def detect_whisper_device():
             log("🎮 GPU + cuDNN 9.x détecté (Python), utilisation GPU pour Whisper", "success")
             return "cuda", "float16"
 
-        # cuDNN 9.x non trouvé
-        log("⚠️ GPU détecté mais cuDNN 9.x manquant, utilisation CPU", "warning")
-        log("💡 Pour activer GPU: pip3 install nvidia-cudnn-cu12==9.1.0.70", "info")
-        return "cpu", "int8"
+        # ========== NOUVEAU: INSTALLATION AUTOMATIQUE cuDNN ==========
+        log("⚠️  GPU détecté mais cuDNN 9.x manquant", "warning")
+        log("📦 Installation automatique de cuDNN pour GPU...", "info")
+
+        success, output = run_command("pip3 install nvidia-cudnn-cu12==9.1.0.70", capture=True, check=False)
+
+        if success:
+            log("✅ cuDNN 9.x installé avec succès !", "success")
+
+            # Vérifier que l'installation a fonctionné
+            success, output = run_command("python3 -c 'import nvidia.cudnn; print(nvidia.cudnn.__version__)'", capture=True, check=False)
+            if success and "9." in output:
+                log("🎮 GPU + cuDNN 9.x prêt, utilisation GPU pour Whisper", "success")
+                return "cuda", "float16"
+            else:
+                log("⚠️  cuDNN installé mais non détecté, utilisation CPU par sécurité", "warning")
+                return "cpu", "int8"
+        else:
+            log(f"❌ Échec installation cuDNN: {output[:200]}", "error")
+            log("💻 Utilisation CPU pour Whisper", "warning")
+            return "cpu", "int8"
 
     except Exception as e:
         log(f"⚠️ Erreur détection GPU: {e}, utilisation CPU", "warning")

@@ -76,9 +76,109 @@ if pgrep -f "uvicorn main:app" > /dev/null; then
     sleep 2
 fi
 
-# PRÉ-CHARGER WHISPER AVANT TOUT !
+# ========== MENU INTERACTIF CPU/GPU + MODÈLE WHISPER ==========
 echo ""
+echo "========================================="
+echo "  CONFIGURATION WHISPER"
+echo "========================================="
+echo ""
+
+# Lire config actuelle depuis .env
+CURRENT_DEVICE=$(grep "^WHISPER_DEVICE=" .env 2>/dev/null | cut -d '=' -f2)
+CURRENT_MODEL=$(grep "^WHISPER_MODEL=" .env 2>/dev/null | cut -d '=' -f2)
+
+echo "📊 Configuration actuelle:"
+echo "   Device: ${CURRENT_DEVICE:-non défini}"
+echo "   Modèle: ${CURRENT_MODEL:-non défini}"
+echo ""
+
+# Menu Device (CPU/GPU)
+echo "💻 Choisissez le mode de transcription:"
+echo "  1. CPU (compatible partout, plus lent: ~3-5s)"
+echo "  2. GPU (RTX 4090, très rapide: ~0.5-1s)"
+echo ""
+read -p "Votre choix [1-CPU/2-GPU, défaut=actuel]: " device_choice
+
+if [ "$device_choice" = "1" ]; then
+    WHISPER_DEVICE="cpu"
+    WHISPER_COMPUTE_TYPE="int8"
+    echo "✅ Mode CPU sélectionné"
+elif [ "$device_choice" = "2" ]; then
+    # Vérifier que GPU est disponible
+    if python3 -c "import torch; exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null; then
+        WHISPER_DEVICE="cuda"
+        WHISPER_COMPUTE_TYPE="float16"
+        echo "✅ Mode GPU sélectionné"
+    else
+        echo "⚠️  GPU non détecté, utilisation CPU par défaut"
+        WHISPER_DEVICE="cpu"
+        WHISPER_COMPUTE_TYPE="int8"
+    fi
+else
+    # Garder config actuelle si pas de choix
+    WHISPER_DEVICE="${CURRENT_DEVICE:-cpu}"
+    WHISPER_COMPUTE_TYPE=$(grep "^WHISPER_COMPUTE_TYPE=" .env 2>/dev/null | cut -d '=' -f2)
+    WHISPER_COMPUTE_TYPE="${WHISPER_COMPUTE_TYPE:-int8}"
+    echo "ℹ️  Configuration actuelle conservée: ${WHISPER_DEVICE}"
+fi
+
+echo ""
+
+# Menu Modèle Whisper
+echo "🤖 Choisissez le modèle Whisper:"
+echo "  1. tiny   - Le plus rapide, moins précis (~75MB)"
+echo "  2. base   - Équilibre vitesse/précision (~150MB)"
+echo "  3. small  - Plus précis, plus lent (~500MB) [RECOMMANDÉ GPU]"
+echo "  4. medium - Très précis, lent (~1.5GB)"
+echo "  5. large  - Meilleure précision, très lent (~3GB)"
+echo ""
+
+# Vérifier modèles déjà téléchargés
+CACHE_DIR="${HOME}/.cache/huggingface/hub"
+DOWNLOADED=""
+for model in tiny base small medium large; do
+    if [ -d "${CACHE_DIR}/models--Systran--faster-whisper-${model}" ] || \
+       [ -d "${CACHE_DIR}/models--openai--whisper-${model}" ]; then
+        DOWNLOADED="${DOWNLOADED}${model}, "
+    fi
+done
+if [ -n "$DOWNLOADED" ]; then
+    echo "💾 Modèles déjà téléchargés : ${DOWNLOADED%, }"
+    echo ""
+fi
+
+read -p "Votre choix [1/2/3/4/5, défaut=actuel]: " model_choice
+
+case "$model_choice" in
+    1) WHISPER_MODEL="tiny" ;;
+    2) WHISPER_MODEL="base" ;;
+    3) WHISPER_MODEL="small" ;;
+    4) WHISPER_MODEL="medium" ;;
+    5) WHISPER_MODEL="large" ;;
+    *) WHISPER_MODEL="${CURRENT_MODEL:-small}"
+       echo "ℹ️  Modèle actuel conservé: ${WHISPER_MODEL}" ;;
+esac
+
+if [ "$model_choice" -ge 1 ] && [ "$model_choice" -le 5 ]; then
+    echo "✅ Modèle ${WHISPER_MODEL} sélectionné"
+fi
+
+echo ""
+
+# Mettre à jour .env avec les nouveaux paramètres
+sed -i "s/^WHISPER_DEVICE=.*/WHISPER_DEVICE=${WHISPER_DEVICE}/" .env
+sed -i "s/^WHISPER_COMPUTE_TYPE=.*/WHISPER_COMPUTE_TYPE=${WHISPER_COMPUTE_TYPE}/" .env
+sed -i "s/^WHISPER_MODEL=.*/WHISPER_MODEL=${WHISPER_MODEL}/" .env
+
+echo "📝 Fichier .env mis à jour:"
+echo "   WHISPER_DEVICE=${WHISPER_DEVICE}"
+echo "   WHISPER_COMPUTE_TYPE=${WHISPER_COMPUTE_TYPE}"
+echo "   WHISPER_MODEL=${WHISPER_MODEL}"
+echo ""
+
+# PRÉ-CHARGER WHISPER AVANT TOUT !
 echo "🤖 Pré-chargement de Whisper (pour éviter les délais pendant les appels)..."
+echo "   Modèle: ${WHISPER_MODEL} sur ${WHISPER_DEVICE}"
 python3 -c "
 import sys
 import os
