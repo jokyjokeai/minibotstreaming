@@ -20,9 +20,7 @@ from scenarios import scenario_test, scenario_production  # Scénarios disponibl
 logger = get_logger(__name__)
 
 # Configuration
-ARI_URL = "http://localhost:8088"
-ARI_USER = "robot"
-ARI_PASS = "tyxiyy6KTdGbIbUT"
+from config import ARI_URL, ARI_USERNAME as ARI_USER, ARI_PASSWORD as ARI_PASS
 RECORDINGS_PATH = "/var/spool/asterisk/recording"
 
 # Services IA - Import IMMÉDIAT au démarrage
