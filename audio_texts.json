@@ -1,0 +1,52 @@
+{
+  "bye_failed": {
+    "file": "bye_failed.wav",
+    "duration": 4.5,
+    "text": "Pas de souci, je comprends, merci pour votre temps et je vous souhaite une excellente journée."
+  },
+  "bye_success": {
+    "file": "bye_success.wav",
+    "duration": 5.4,
+    "text": "Parfait, un conseiller vous rappellera très prochainement.  Merci pour votre temps et bonne journée."
+  },
+  "confirm": {
+    "file": "confirm.wav",
+    "duration": 5.2,
+    "text": "Génial ! Vous préférez être rappelé le matin, l'après-midi ou plutôt en soirée ?"
+  },
+  "hello": {
+    "file": "hello.wav",
+    "duration": 17.0,
+    "text": "Oui bonjour je suis Thierry de l'association France Patrimoine.  Nous aidons les épargnants à mieux protéger leur capital et optimiser leur placement.  J'ai juste trois petites questions pour voir si nous pouvons vous aider à protéger, optimiser votre patrimoine.  Ça vous va ?"
+  },
+  "is_leads": {
+    "file": "is_leads.wav",
+    "duration": 13.0,
+    "text": "D'accord, alors bonne nouvelle, je peux vous faire bénéficier d'un meilleur accompagnement  pour optimiser vos placements.  Ce que je vous propose, c'est qu'un de nos experts vous rappelle sous 48 heures pour  analyser votre dossier, vous présentez nos solutions.  Ça vous va ?"
+  },
+  "q1": {
+    "file": "q1.wav",
+    "duration": 6.1,
+    "text": "Super ! Tout d'abord, avez-vous actuellement un livré A, un PEL ou bien une assurance vie ?"
+  },
+  "q2": {
+    "file": "q2.wav",
+    "duration": 5.5,
+    "text": "Très bien et savez-vous si votre livret vous rapporte plus que l'inflation."
+  },
+  "q3": {
+    "file": "q3.wav",
+    "duration": 6.0,
+    "text": "Ok et enfin, êtes-vous satisfait du suivi de votre conseiller bancaire actuel ?"
+  },
+  "retry": {
+    "file": "retry.wav",
+    "duration": 10.1,
+    "text": "Je comprends tout à fait. Comme je vous l'ai dit, nous sommes là pour aider les épargnants à bénéficier de solutions plus rentables.  C'est trois questions simples, seulement pour voir si vous êtes concernés. Je peux continuer ?"
+  },
+  "test_audio": {
+    "file": "test_audio.wav",
+    "duration": 8.2,
+    "text": "Ceci est le test d'initialisation de Faster Whisper pour l'installation de mini-butt panel."
+  }
+}

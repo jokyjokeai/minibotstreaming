@@ -1,0 +1,55 @@
+# MiniBotPanel v2 - .gitignore
+
+# Secrets et configuration locale
+.env
+*.env
+.env.local
+
+# Logs
+logs/
+*.log
+
+# Enregistrements audio
+recordings/
+assembled_audio/
+transcripts/
+
+# Cache Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Cache Whisper (très lourd)
+.cache/
+*.cache
+
+# Base de données locale
+*.db
+*.sqlite
+*.sqlite3
+
+# Fichiers système
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+
+# Backups
+*.bak
+backup_*/
+
+# IDE
+.vscode/
+.idea/
+*.code-workspace
+
+# Fichiers temporaires
+temp_*.py
+tmp/
+*.tmp
+
+# Rapport installation (généré automatiquement)
+INSTALLATION_REPORT.txt

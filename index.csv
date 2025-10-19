@@ -1,0 +1,46 @@
+directory,filename,description
+.,audio_texts.json,Transcriptions Whisper des fichiers audio du bot
+.,config.py,"Configuration générale du système (BDD, Asterisk, etc.)"
+.,contacts_test.csv,Fichier CSV (données tabulaires)
+.,database.py,Configuration SQLAlchemy - Connexion PostgreSQL
+.,generate_index.py,Fichier du projet
+.,index.csv,Fichier CSV (données tabulaires)
+.,logger_config.py,Configuration centralisée des logs
+.,main.py,Point d'entrée FastAPI - Démarre l'API web et les routes
+.,models.py,"Modèles de données SQLAlchemy (Call, Contact, Campaign, etc.)"
+.,monitor_logs.sh,Affiche les logs en temps réel (tail -f)
+.,requirements.txt,Dépendances Python du projet
+.,robot_ari.py,Robot principal - Gère les appels via Asterisk ARI
+.,scenario_cache.py,Pré-chargement et validation des scénarios au démarrage
+.,scenarios.py,Définition des scénarios d'appel (production et test)
+.,start_system.sh,"Lance tous les services (robot_ari, API, batch_caller)"
+.,stop_system.sh,Arrête tous les services en cours
+.claude,settings.local.json,Configuration locale de Claude Code
+api,__init__.py,Initialisation du package API
+api,calls.py,Routes API pour gérer les appels individuels
+api,campaigns.py,Routes API pour gérer les campagnes d'appels
+api,stats.py,Routes API pour les statistiques et analytics
+asterisk-configs,amd.conf,Fichier du projet
+asterisk-configs,ari.conf,Fichier du projet
+asterisk-configs,extensions.conf,Fichier du projet
+asterisk-configs,http.conf,Fichier du projet
+contacts,export_full.csv,Fichier CSV (données tabulaires)
+read,CONFIGURATION_CALLER_ID.md,Configuration du Caller ID pour l'émission d'appels
+read,GUIDE_COMPLET.md,"Guide complet d'installation, configuration et utilisation (installation, setup audio, campagnes, monitoring, troubleshooting)"
+read,README.md,Documentation principale du projet
+read,SYSTEME_QUEUE.md,Documentation du système de queue d'appels
+read,VERIFICATION_INSTALL.md,Guide de vérification post-installation
+services,__init__.py,Initialisation du package services
+services,audio_assembly_service.py,Assemblage des fichiers audio bot + client en un seul WAV
+services,call_launcher.py,Service de lancement d'appels via ARI
+services,sentiment_service.py,Analyse de sentiment par mots-clés (positif/négatif/interrogatif)
+services,transcript_service.py,Génération de transcriptions complètes (JSON et TXT)
+services,whisper_service.py,Service de transcription audio avec Whisper (faster-whisper)
+system,batch_caller.py,Service de gestion des appels en batch avec throttling
+system,cleanup_recordings.sh,Nettoyage automatique des enregistrements anciens
+system,export_contacts.py,Export de contacts depuis PostgreSQL vers CSV
+system,import_contacts.py,Import de contacts depuis CSV vers PostgreSQL
+system,install.py,"Installation complète du système (Asterisk, PostgreSQL, dépendances)"
+system,launch_campaign.py,CLI pour lancer des campagnes d'appels
+system,setup_audio.sh,Conversion et copie des fichiers audio + transcription Whisper
+system,uninstall.py,Désinstallation complète du système

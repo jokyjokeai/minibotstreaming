@@ -1,0 +1,44 @@
+[transport-udp]
+type=transport
+protocol=udp
+bind=0.0.0.0
+
+[votre-trunk]
+type=endpoint
+context=outbound-robot
+disallow=all
+allow=ulaw
+allow=alaw
+; Add your SIP/VoIP provider configuration here
+; outbound_auth=votre-trunk
+; aors=votre-trunk
+
+; [votre-trunk]
+; type=auth
+; auth_type=userpass
+; username=YOUR_SIP_USERNAME
+; password=YOUR_SIP_PASSWORD
+
+; [votre-trunk]
+; type=aor
+; contact=sip:YOUR_SIP_SERVER
+
+; Example for a generic SIP provider:
+; [my-provider]
+; type=endpoint
+; context=outbound-robot
+; disallow=all
+; allow=ulaw
+; allow=alaw
+; outbound_auth=my-provider
+; aors=my-provider
+
+; [my-provider]
+; type=auth  
+; auth_type=userpass
+; username=your_sip_username
+; password=your_sip_password
+
+; [my-provider]
+; type=aor
+; contact=sip:your.sip.provider.com
