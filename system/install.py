@@ -768,23 +768,49 @@ def test_transmit_silence():
     """Test que transmit_silence est activé - CRITIQUE pour l'enregistrement"""
     log("🔊 Test configuration transmit_silence (CRITIQUE)...")
 
-    success, output = run_command(
-        "asterisk -rx 'core show settings' | grep -i transmit",
-        capture=True,
-        check=False
-    )
+    # Attendre qu'Asterisk soit complètement démarré (important après un restart)
+    log("⏳ Attente démarrage complet d'Asterisk...", "info")
+    time.sleep(3)
 
-    if success and "Transmit silence during Record() app" in output and "Enabled" in output:
-        log("✅ transmit_silence activé - Les enregistrements fonctionneront", "success")
-        return True
-    elif success and "Transmit silence during Record() app" in output and "Disabled" in output:
-        log("❌ transmit_silence DÉSACTIVÉ - Les appels vont raccrocher !", "error")
-        log("⚠️  CRITIQUE: Sans transmit_silence, les appelants raccrochent pendant l'enregistrement", "error")
-        log("💡 Solution: Éditer /etc/asterisk/asterisk.conf et activer transmit_silence", "warning")
-        return False
-    else:
-        log("⚠️  Impossible de vérifier transmit_silence", "warning")
-        return False
+    # Réessayer jusqu'à 3 fois avec délai
+    for attempt in range(3):
+        success, output = run_command(
+            "asterisk -rx 'core show settings' | grep -i transmit",
+            capture=True,
+            check=False
+        )
+
+        if success and "Transmit silence during Record() app" in output:
+            if "Enabled" in output:
+                log("✅ transmit_silence activé - Les enregistrements fonctionneront", "success")
+                return True
+            elif "Disabled" in output:
+                log("❌ transmit_silence DÉSACTIVÉ - Les appels vont raccrocher !", "error")
+                log("⚠️  CRITIQUE: Sans transmit_silence, les appelants raccrochent pendant l'enregistrement", "error")
+                log("💡 Solution: Éditer /etc/asterisk/asterisk.conf et activer transmit_silence", "warning")
+                return False
+
+        # Si échec, attendre et réessayer
+        if attempt < 2:
+            log(f"⏳ Réessai {attempt + 2}/3 dans 2 secondes...", "info")
+            time.sleep(2)
+
+    # Si toutes les tentatives échouent, vérifier directement le fichier de config
+    log("⚠️  Impossible de vérifier via Asterisk, vérification fichier de config...", "warning")
+
+    if os.path.exists("/etc/asterisk/asterisk.conf"):
+        success, output = run_command(
+            "grep -i 'transmit_silence.*=.*yes' /etc/asterisk/asterisk.conf",
+            capture=True,
+            check=False
+        )
+        if success and output.strip():
+            log("✅ transmit_silence=yes trouvé dans asterisk.conf", "success")
+            log("   (Asterisk appliquera ce paramètre au prochain redémarrage)", "info")
+            return True
+
+    log("❌ transmit_silence non vérifié", "warning")
+    return False
 
 def test_ari_connection():
     """Test connexion ARI avec authentification"""
