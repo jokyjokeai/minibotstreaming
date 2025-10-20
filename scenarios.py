@@ -608,6 +608,8 @@ def scenario_production(robot, channel_id, phone_number, campaign_id=None):
         call_completed = True
         final_sentiment = "unknown"
         in_conversation = False  # Flag pour détecter raccrochage prématuré vs erreur technique
+        consecutive_silences = 0  # Compteur de silences consécutifs (pour détecter répondeur/téléphone abandonné)
+        MAX_CONSECUTIVE_SILENCES = 3  # 3 silences de suite = répondeur probable
 
         # ========================================
         # 1. HELLO - INTRODUCTION
@@ -702,6 +704,13 @@ def scenario_production(robot, channel_id, phone_number, campaign_id=None):
         # ✅ MARQUER QU'ON EST MAINTENANT EN CONVERSATION
         # Si exception après ce point = raccrochage prématuré, pas erreur technique
         in_conversation = True
+
+        # Vérifier silence (reset si vraie réponse)
+        if trans_hello and trans_hello not in ["silence", "error"]:
+            consecutive_silences = 0
+        else:
+            consecutive_silences += 1
+            logger.warning(f"⚠️  Silence détecté ({consecutive_silences}/{MAX_CONSECUTIVE_SILENCES})")
 
         # ========================================
         # 2. GESTION RETRY (si négatif/interrogatif)
@@ -800,8 +809,31 @@ def scenario_production(robot, channel_id, phone_number, campaign_id=None):
                 sentiment=sent_q
             )
 
-            # ⚠️ PAS DE LOGIQUE DE SORTIE ICI !
-            # On continue toujours vers la question suivante
+            # ⚠️ Vérifier silences consécutifs (répondeur probable/téléphone abandonné)
+            if trans_q and trans_q not in ["silence", "error"]:
+                consecutive_silences = 0  # Reset si vraie réponse
+            else:
+                consecutive_silences += 1
+                logger.warning(f"⚠️  Silence détecté ({consecutive_silences}/{MAX_CONSECUTIVE_SILENCES})")
+
+                # Si trop de silences → arrêter (répondeur probable ou téléphone abandonné)
+                if consecutive_silences >= MAX_CONSECUTIVE_SILENCES:
+                    logger.warning(f"🚨 {MAX_CONSECUTIVE_SILENCES} silences consécutifs → Répondeur probable ou téléphone abandonné!")
+                    logger.warning(f"   Arrêt du scénario pour économiser du temps")
+
+                    update_final_call_status(channel_id, "too_many_silences")
+                    update_contact_status_from_call(
+                        phone_number=phone_number,
+                        amd_result=None,  # Pas forcément un répondeur, peut-être téléphone abandonné
+                        final_sentiment="too_many_silences",
+                        is_lead_qualified=False,
+                        call_completed=False  # ✅ CORRECTION: No_answer pour retry (pas machine)
+                    )
+
+                    logger.info("📞 Hanging up - Too many consecutive silences → No_answer (retry possible)")
+                    return  # Raccrocher
+
+            # On continue toujours vers la question suivante (si pas arrêté pour silence)
 
         # ========================================
         # 4. IS_LEADS - QUESTION FINALE DE QUALIFICATION
