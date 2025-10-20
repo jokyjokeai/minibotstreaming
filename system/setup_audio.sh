@@ -163,16 +163,15 @@ ls -lh "$ASTERISK_SOUNDS"/*.wav 2>/dev/null | awk '{print "   " $9 " (" $5 ")"}'
 # 5. Transcription automatique avec Whisper et mise à jour audio_texts.json
 echo ""
 echo "🎤 Transcription automatique des fichiers audio avec Whisper..."
-python3 << 'EOF'
+python3 << EOF
 import json
 import subprocess
 import os
 import sys
 from pathlib import Path
 
-# Détecter le répertoire du projet (2 niveaux au-dessus de ce script)
-# Ce script Python est intégré dans system/setup_audio.sh
-project_root = os.path.dirname(os.path.dirname(os.path.abspath(sys.argv[0])))
+# Récupérer PROJECT_ROOT depuis la variable d'environnement passée par bash
+project_root = "$PROJECT_ROOT"
 
 # Configuration
 audio_dir = os.path.join(project_root, "audio")
