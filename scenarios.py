@@ -37,32 +37,32 @@ except Exception as e:
 
 LISTEN_TIMEOUTS = {
     "hello": {
-        "max_silence_seconds": 2,
-        "wait_before_stop": 15  # Augmenté de 8 → 15s pour laisser le temps de répondre
+        "max_silence_seconds": 0.8,  # Réduit de 2 → 0.8s pour détecter fin de réponse plus rapidement
+        "wait_before_stop": 25  # Augmenté de 15 → 25s pour laisser le temps de parler
     },
     "retry": {
-        "max_silence_seconds": 2,
-        "wait_before_stop": 15  # Augmenté de 6 → 15s pour laisser le temps de répondre
+        "max_silence_seconds": 0.8,  # Réduit de 2 → 0.8s
+        "wait_before_stop": 25  # Augmenté de 15 → 25s
     },
     "q1": {
-        "max_silence_seconds": 2,
-        "wait_before_stop": 15  # Augmenté de 10 → 15s pour laisser le temps de répondre
+        "max_silence_seconds": 0.8,  # Réduit de 2 → 0.8s
+        "wait_before_stop": 25  # Augmenté de 15 → 25s
     },
     "q2": {
-        "max_silence_seconds": 2,
-        "wait_before_stop": 15  # Augmenté de 10 → 15s pour laisser le temps de répondre
+        "max_silence_seconds": 0.8,  # Réduit de 2 → 0.8s
+        "wait_before_stop": 25  # Augmenté de 15 → 25s
     },
     "q3": {
-        "max_silence_seconds": 2,
-        "wait_before_stop": 15  # Augmenté de 10 → 15s pour laisser le temps de répondre
+        "max_silence_seconds": 0.8,  # Réduit de 2 → 0.8s
+        "wait_before_stop": 25  # Augmenté de 15 → 25s
     },
     "is_leads": {
-        "max_silence_seconds": 2,
-        "wait_before_stop": 15  # Augmenté de 8 → 15s pour laisser le temps de répondre
+        "max_silence_seconds": 0.8,  # Réduit de 2 → 0.8s
+        "wait_before_stop": 25  # Augmenté de 15 → 25s
     },
     "confirm": {
-        "max_silence_seconds": 2,
-        "wait_before_stop": 15  # Augmenté de 6 → 15s pour laisser le temps de répondre
+        "max_silence_seconds": 0.8,  # Réduit de 2 → 0.8s
+        "wait_before_stop": 25  # Augmenté de 15 → 25s
     }
 }
 
@@ -842,9 +842,9 @@ def scenario_production(robot, channel_id, phone_number, campaign_id=None):
         # 5. DÉCISION FINALE : LEAD OU NOT_INTERESTED
         # ========================================
 
-        if sent_is_leads in ["positive", "neutre"]:
-            # ✅ LEAD QUALIFIÉ !
-            logger.info("✅ LEAD QUALIFIED! (Positive/Neutre response to is_leads)")
+        if sent_is_leads in ["positive", "neutre", "unclear"]:
+            # ✅ LEAD QUALIFIÉ ! (bénéfice du doute pour unclear = incompréhension, pas refus)
+            logger.info("✅ LEAD QUALIFIED! (Positive/Neutre/Unclear response to is_leads)")
 
             is_lead_qualified = True
             final_sentiment = sent_is_leads

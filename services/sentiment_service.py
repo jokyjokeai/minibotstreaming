@@ -169,7 +169,16 @@ class SentimentService:
             return "positive", 0.85
 
         # ============================================================
-        # PRIORITÉ 1: DÉTECTION INTERROGATIVE (questions/méfiance)
+        # PRIORITÉ 1: EXPRESSIONS D'INCOMPRÉHENSION → NEUTRE (pas négatif!)
+        # ============================================================
+        # "Allô?", "Hein?", "Pardon?" = incompréhension, PAS refus → traiter comme neutre
+        incomprehension_words = ["allô", "allo", "hein", "pardon", "comment", "quoi", "répétez", "repetez"]
+        if any(word in normalized_text for word in incomprehension_words) and len(words) <= 3:
+            logger.info(f"🤷 INCOMPRÉHENSION détectée ('{text[:30]}...') → NEUTRE (bénéfice du doute)")
+            return "neutre", 0.6  # Neutre = Lead potentiel (bénéfice du doute)
+
+        # ============================================================
+        # PRIORITÉ 2: DÉTECTION INTERROGATIVE (questions/méfiance)
         # ============================================================
         for pattern in self.interrogative_patterns:
             if re.search(pattern, normalized_text, re.IGNORECASE):
@@ -182,7 +191,7 @@ class SentimentService:
                     return "interrogatif", 0.85
 
         # ============================================================
-        # PRIORITÉ 2: DÉTECTION NÉGATIVE FORTE (phrases explicites)
+        # PRIORITÉ 3: DÉTECTION NÉGATIVE FORTE (phrases explicites)
         # ============================================================
         # Phrases de rejet très fortes
         if "laissez-moi tranquille" in normalized_text or "foutez-moi" in normalized_text:
@@ -230,7 +239,7 @@ class SentimentService:
             return "negative", 0.7
 
         # ============================================================
-        # PRIORITÉ 3: DÉTECTION POSITIVE FORTE (phrases explicites)
+        # PRIORITÉ 4: DÉTECTION POSITIVE FORTE (phrases explicites)
         # ============================================================
         # Intérêt explicite
         if "ça m'intéresse" in normalized_text or "ca m'intéresse" in normalized_text:

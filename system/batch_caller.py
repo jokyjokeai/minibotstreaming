@@ -146,7 +146,18 @@ def update_completed_calls(db):
             # Mettre à jour le contact
             contact = db.query(Contact).filter(Contact.phone == queue_item.phone_number).first()
             if contact:
-                # NE PAS écraser contact.status ! Il est déjà correctement mis à jour par le scénario
+                # CORRECTION: Si contact.status est toujours "Calling", le scénario n'a pas été exécuté
+                # (répondeur détecté par AMD avant le scénario, ou appel échoué immédiatement)
+                # → Mettre à "No_answer" pour permettre retry
+                if contact.status == "Calling":
+                    if call_record.amd_result == "machine" or call_record.duration == 0:
+                        contact.status = "No_answer"
+                        logger.info(f"   🤖 Répondeur/appel court détecté → No_answer (retry possible)")
+                    else:
+                        contact.status = "No_answer"  # Erreur technique générique
+                        logger.info(f"   ⚠️  Appel terminé sans scénario → No_answer (retry)")
+
+                # NE PAS écraser contact.status s'il a déjà été mis à jour par le scénario!
                 # (Leads, Not_interested, No_answer, etc.) via update_contact_status_from_call()
                 contact.attempts = queue_item.attempts
                 contact.last_attempt = queue_item.last_attempt_at
