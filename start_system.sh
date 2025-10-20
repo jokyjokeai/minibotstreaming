@@ -11,7 +11,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # Configurer les chemins pour cuDNN (pour GPU)
-export LD_LIBRARY_PATH=/usr/local/lib/python3.10/dist-packages/ctranslate2.libs:$LD_LIBRARY_PATH
+# Auto-détection du chemin des librairies NVIDIA (installées par install.py)
+NVIDIA_CUDNN_PATH="${HOME}/.local/lib/python3.10/site-packages/nvidia/cudnn/lib"
+NVIDIA_CUBLAS_PATH="${HOME}/.local/lib/python3.10/site-packages/nvidia/cublas/lib"
+
+if [ -d "$NVIDIA_CUDNN_PATH" ] && [ -d "$NVIDIA_CUBLAS_PATH" ]; then
+    export LD_LIBRARY_PATH="${NVIDIA_CUBLAS_PATH}:${NVIDIA_CUDNN_PATH}:$LD_LIBRARY_PATH"
+    echo "✅ GPU cuDNN libraries detected and configured"
+else
+    echo "ℹ️  GPU cuDNN libraries not found (CPU mode will be used)"
+fi
 
 # Créer les dossiers nécessaires
 mkdir -p logs recordings audio
