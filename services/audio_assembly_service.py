@@ -104,11 +104,27 @@ class AudioAssemblyService:
             # 2. Nom du fichier de sortie
             output_file = f"{self.assembled_path}/full_call_assembled_{call_id}.wav"
 
-            # 3. Utiliser sox pour concaténer tous les fichiers (bot normal + client amplifié)
-            cmd = ["sox"] + audio_files + [output_file]
+            # 3. Créer un fichier de silence temporaire (0.4s à 8000Hz mono pour téléphonie)
+            silence_file = f"{self.assembled_path}/temp_silence_{call_id}.wav"
+            temp_files.append(silence_file)
+
+            silence_cmd = ["sox", "-n", "-r", "8000", "-c", "1", silence_file, "trim", "0.0", "0.4"]
+            subprocess.run(silence_cmd, capture_output=True, text=True, timeout=5)
+
+            # 4. Construire la commande sox avec délais entre segments
+            # Format: file1 silence file2 silence file3 ...
+            sox_inputs = []
+            for i, audio_file in enumerate(audio_files):
+                sox_inputs.append(audio_file)
+                # Ajouter silence entre segments (sauf après le dernier)
+                if i < len(audio_files) - 1:
+                    sox_inputs.append(silence_file)
+
+            # 5. Assembler avec sox
+            cmd = ["sox"] + sox_inputs + [output_file]
 
             logger.info(f"🔧 Running: sox {len(audio_files)} files -> {output_file}")
-            logger.info(f"   (Client audio amplified +8dB for better clarity)")
+            logger.info(f"   (Client audio amplified +8dB + 0.4s natural pauses between segments)")
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
             if result.returncode == 0:

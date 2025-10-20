@@ -616,7 +616,10 @@ def scenario_production(robot, channel_id, phone_number, campaign_id=None):
         logger.info("📢 STEP 1: HELLO - Introduction")
         logger.info("=" * 60)
 
-        robot.play_audio_file(channel_id, "hello")
+        # Jouer hello et vérifier que ça marche (sinon = raccrochage)
+        playback_id = robot.play_audio_file(channel_id, "hello")
+        if playback_id is None:
+            raise Exception("Channel disconnected during hello playback")
 
         # Enregistrer la réponse
         recording_hello = f"prod_hello_{channel_id}_{int(time.time())}"
@@ -707,7 +710,9 @@ def scenario_production(robot, channel_id, phone_number, campaign_id=None):
             logger.info("=" * 60)
 
             retry_used = True
-            robot.play_audio_file(channel_id, "retry")
+            playback_id = robot.play_audio_file(channel_id, "retry")
+            if playback_id is None:
+                raise Exception("Channel disconnected during retry playback")
 
             # Enregistrer réponse après retry
             recording_retry = f"prod_retry_{channel_id}_{int(time.time())}"
@@ -732,7 +737,9 @@ def scenario_production(robot, channel_id, phone_number, campaign_id=None):
             # Si toujours négatif après retry → Bye_Failed
             if sent_retry == "negative":
                 logger.info("❌ Still negative after retry → BYE_FAILED")
-                robot.play_audio_file(channel_id, "bye_failed")
+                playback_id = robot.play_audio_file(channel_id, "bye_failed")
+                if playback_id is None:
+                    raise Exception("Channel disconnected during bye_failed playback")
 
                 final_sentiment = "negative"
                 is_lead_qualified = False
@@ -761,7 +768,9 @@ def scenario_production(robot, channel_id, phone_number, campaign_id=None):
             logger.info("=" * 60)
 
             audio_file = f"q{q_num}"
-            robot.play_audio_file(channel_id, audio_file)
+            playback_id = robot.play_audio_file(channel_id, audio_file)
+            if playback_id is None:
+                raise Exception(f"Channel disconnected during {audio_file} playback")
 
             # Enregistrer réponse
             recording_q = f"prod_q{q_num}_{channel_id}_{int(time.time())}"
@@ -795,7 +804,9 @@ def scenario_production(robot, channel_id, phone_number, campaign_id=None):
         logger.info("🎯 STEP FINAL: IS_LEADS - Question de qualification")
         logger.info("=" * 60)
 
-        robot.play_audio_file(channel_id, "is_leads")
+        playback_id = robot.play_audio_file(channel_id, "is_leads")
+        if playback_id is None:
+            raise Exception("Channel disconnected during is_leads playback")
 
         # Enregistrer réponse IS_LEADS
         recording_is_leads = f"prod_is_leads_{channel_id}_{int(time.time())}"
@@ -835,7 +846,9 @@ def scenario_production(robot, channel_id, phone_number, campaign_id=None):
             logger.info("📅 CONFIRM: Asking for time slot preference")
             logger.info("=" * 60)
 
-            robot.play_audio_file(channel_id, "confirm")
+            playback_id = robot.play_audio_file(channel_id, "confirm")
+            if playback_id is None:
+                raise Exception("Channel disconnected during confirm playback")
 
             # Enregistrer réponse Confirm
             recording_confirm = f"prod_confirm_{channel_id}_{int(time.time())}"
@@ -864,7 +877,9 @@ def scenario_production(robot, channel_id, phone_number, campaign_id=None):
             logger.info("🎉 BYE_SUCCESS: Ending call with qualified lead")
             logger.info("=" * 60)
 
-            robot.play_audio_file(channel_id, "bye_success")
+            playback_id = robot.play_audio_file(channel_id, "bye_success")
+            if playback_id is None:
+                raise Exception("Channel disconnected during bye_success playback")
 
         else:
             # ❌ NOT INTERESTED
@@ -880,7 +895,9 @@ def scenario_production(robot, channel_id, phone_number, campaign_id=None):
             logger.info("👋 BYE_FAILED: Ending call - not interested")
             logger.info("=" * 60)
 
-            robot.play_audio_file(channel_id, "bye_failed")
+            playback_id = robot.play_audio_file(channel_id, "bye_failed")
+            if playback_id is None:
+                raise Exception("Channel disconnected during bye_failed playback")
 
         # ========================================
         # 9. MISE À JOUR STATUTS FINAUX
