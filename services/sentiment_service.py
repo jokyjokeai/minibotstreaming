@@ -140,6 +140,10 @@ class SentimentService:
         # Normalize text: lowercase and clean
         normalized_text = text.lower().strip()
 
+        # ✅ FIX: Définir words dès le début pour éviter UnboundLocalError
+        normalized_text_for_words = re.sub(r'[^\w\s]', ' ', normalized_text)
+        words = normalized_text_for_words.split()
+
         logger.info(f"💭 Analyzing sentiment for: '{text[:50]}...'")
 
         # ============================================================
@@ -281,10 +285,7 @@ class SentimentService:
             logger.info("✅ Found positive: 'je veux bien'")
             return "positive", 0.75
 
-        normalized_text = re.sub(r'[^\w\s]', ' ', normalized_text)
-        words = normalized_text.split()
-
-        # Count positive and negative words
+        # Count positive and negative words (words déjà défini au début)
         positive_count = 0
         negative_count = 0
 

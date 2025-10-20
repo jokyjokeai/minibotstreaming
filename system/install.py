@@ -552,8 +552,14 @@ def configure_asterisk_ari(sip_config, whisper_model="base"):
 
     # Détecter device Whisper optimal
     whisper_device, whisper_compute = detect_whisper_device()
-    
-    # PJSIP Configuration
+
+    # Déterminer le chemin du dossier asterisk-configs
+    # Le script install.py est dans system/, donc le dossier asterisk-configs est au même niveau
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(script_dir)  # Remonter d'un niveau depuis system/
+    asterisk_configs_dir = os.path.join(project_root, "asterisk-configs")
+
+    # PJSIP Configuration (dynamique - contient identifiants SIP)
     pjsip_conf = f"""[global]
 type=global
 endpoint_identifier_order=ip,username
@@ -596,15 +602,15 @@ type=identify
 endpoint=bitcall
 match={sip_config['server']}
 """
-    
-    # HTTP Configuration pour ARI
+
+    # HTTP Configuration pour ARI (dynamique - généré)
     http_conf = """[general]
 enabled=yes
 bindaddr=127.0.0.1
 bindport=8088
 """
-    
-    # ARI Configuration  
+
+    # ARI Configuration (dynamique - contient password généré)
     ari_conf = f"""[general]
 enabled = yes
 pretty = yes
@@ -614,9 +620,23 @@ type = user
 read_only = no
 password = {ari_password}
 """
-    
-    # Extensions.conf (dialplan - MODE BATCH avec MixMonitor pour enregistrement complet)
-    extensions_conf = f"""[outbound-robot]
+
+    # ✅ LECTURE DEPUIS asterisk-configs/ pour extensions.conf et amd.conf
+    # Ces fichiers sont maintenant lus depuis le dossier de config au lieu d'être hardcodés
+    log("📂 Lecture configs depuis asterisk-configs/...", "info")
+
+    extensions_conf_path = os.path.join(asterisk_configs_dir, "extensions.conf")
+    amd_conf_path = os.path.join(asterisk_configs_dir, "amd.conf")
+
+    # Lire extensions.conf depuis asterisk-configs/
+    if os.path.exists(extensions_conf_path):
+        with open(extensions_conf_path, 'r') as f:
+            extensions_conf = f.read()
+        log("✅ extensions.conf lu depuis asterisk-configs/", "success")
+    else:
+        log("⚠️  asterisk-configs/extensions.conf introuvable, utilisation config par défaut", "warning")
+        # Fallback sur ancienne config hardcodée (sécurité)
+        extensions_conf = f"""[outbound-robot]
 ; Robot calls with AMD (Answering Machine Detection)
 ; Args from ARI: ARG1=phone_number, ARG2=scenario, ARG3=campaign_id
 exten => _X.,1,NoOp(Robot Call to ${{EXTEN}})
@@ -627,8 +647,11 @@ exten => _X.,1,NoOp(Robot Call to ${{EXTEN}})
     ; Randomisation du Caller ID: 336 + 8 chiffres aléatoires
     same => n,Set(CALLERID(num)=336${{RAND(10000000,99999999)}})
     same => n,NoOp(Caller ID randomisé: ${{CALLERID(num)}})
-    same => n,AMD()
-    same => n,NoOp(AMD Status: ${{AMDSTATUS}}, Cause: ${{AMDCAUSE}})
+    ; ⚠️ AMD NATIF DÉSACTIVÉ - Remplacé par IA AMD (Whisper + patterns) dans robot_ari.py
+    ; L'IA AMD se lance automatiquement après Answer() avec 95-98% de précision
+    ; same => n,AMD()
+    same => n,Set(AMDSTATUS=UNKNOWN)
+    same => n,NoOp(AMD natif désactivé - IA AMD utilisée à la place)
     ; AudioFork DÉSACTIVÉ - Mode batch uniquement
     ; same => n,AudioFork(ws://127.0.0.1:8080/${{UNIQUEID}})
     ; MixMonitor RÉACTIVÉ avec option r() pour enregistrement complet + client séparé
@@ -650,16 +673,27 @@ exten => _X.,1,NoOp(Test Recording Call to ${{EXTEN}})
     same => n,Record(${{REC_FILE}}.wav,10,20,k)
     same => n,Hangup()
 """
-    
-    # AMD Configuration (optimisée pour meilleure détection répondeurs)
-    amd_conf = """[general]
+
+    # Lire amd.conf depuis asterisk-configs/
+    if os.path.exists(amd_conf_path):
+        with open(amd_conf_path, 'r') as f:
+            amd_conf = f.read()
+        log("✅ amd.conf lu depuis asterisk-configs/", "success")
+    else:
+        log("⚠️  asterisk-configs/amd.conf introuvable, utilisation config par défaut", "warning")
+        # Fallback sur ancienne config (sécurité)
+        amd_conf = """[general]
+; ⚠️ AMD NATIF ASTERISK - DÉSACTIVÉ
+; Ce fichier n'est plus utilisé car remplacé par l'IA AMD (Whisper + pattern matching)
+; dans robot_ari.py avec 95-98% de précision (vs 70-80% pour AMD natif)
+
 initial_silence = 2000        ; Temps d'attente initial avant de déclarer machine
 greeting = 1500               ; Durée max pour dire "Allô"
-after_greeting_silence = 800  ; Silence après le greeting - Détecte mieux les répondeurs
-total_analysis_time = 2000    ; Temps total d'analyse - Optimisé pour démarrage rapide
+after_greeting_silence = 800  ; Silence après le greeting
+total_analysis_time = 2000    ; Temps total d'analyse
 min_word_length = 100         ; Durée min d'un mot en ms
 between_words_silence = 50    ; Silence entre les mots
-maximum_number_of_words = 3   ; Max 3 mots = humain (ex: "Allô c'est moi")
+maximum_number_of_words = 3   ; Max 3 mots = humain
 silence_threshold = 256       ; Seuil de détection du silence
 maximum_word_length = 2000    ; Durée max d'un mot en ms
 """

@@ -75,21 +75,21 @@ class AudioAssemblyService:
                         logger.warning(f"  ⚠️  Client file not found: {original_path}")
                         continue
 
-                    # Créer une version amplifiée temporaire (+8dB pour entendre mieux les clients)
+                    # Créer une version amplifiée temporaire (+12dB pour bien entendre les clients)
                     temp_amplified = f"{self.assembled_path}/temp_amplified_{idx}_{filename}"
                     temp_files.append(temp_amplified)
 
-                    # Amplifier avec sox : vol +8dB
+                    # ✅ Amplifier avec sox : vol +12dB (équilibré)
                     amplify_cmd = [
                         "sox", original_path, temp_amplified,
-                        "vol", "8dB"  # Augmentation de +8dB (recommandé pour voix téléphone)
+                        "vol", "12dB"  # Augmentation de +12dB (équilibré pour voix téléphoniques)
                     ]
 
                     result = subprocess.run(amplify_cmd, capture_output=True, text=True, timeout=10)
 
                     if result.returncode == 0:
                         audio_files.append(temp_amplified)
-                        logger.debug(f"  ✅ CLIENT (amplified +8dB): {filename}")
+                        logger.debug(f"  ✅ CLIENT (amplified +12dB): {filename}")
                     else:
                         logger.warning(f"  ⚠️  Amplification failed for {filename}, using original")
                         audio_files.append(original_path)  # Fallback sur original
@@ -124,7 +124,7 @@ class AudioAssemblyService:
             cmd = ["sox"] + sox_inputs + [output_file]
 
             logger.info(f"🔧 Running: sox {len(audio_files)} files -> {output_file}")
-            logger.info(f"   (Client audio amplified +8dB + 0.4s natural pauses between segments)")
+            logger.info(f"   (Client audio amplified +12dB + 0.4s natural pauses between segments)")
             result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
 
             if result.returncode == 0:
