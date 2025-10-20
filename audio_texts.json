@@ -27,7 +27,7 @@
   "q1": {
     "file": "q1.wav",
     "duration": 5.3,
-    "text": "Super ! Tout d'abord, avez-vous actuellement un livret A, un PEL ou bien une assurance vie ?"
+    "text": "Super ! Tout d'abord, avez-vous actuellement un livret A, un PEL ou bien une assurance-vie ?"
   },
   "q2": {
     "file": "q2.wav",
@@ -47,6 +47,6 @@
   "test_audio": {
     "file": "test_audio.wav",
     "duration": 8.2,
-    "text": "Ceci est le test d'initialisation de Faster Whisper pour l'installation de MiniBot Panel."
+    "text": "Ceci est le test d'initialisation de Faster Whisper pour l'installation de MiniBot panel."
   }
 }

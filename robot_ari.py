@@ -489,8 +489,14 @@ class RobotARI:
             logger.error(f"❌ Record error: {e}")
             return None
 
-    def process_recording(self, recording_path):
-        """Traite l'enregistrement: transcription + sentiment"""
+    def process_recording(self, recording_path, trim_seconds=0):
+        """
+        Traite l'enregistrement: nettoyage (optionnel) + transcription + sentiment
+
+        Args:
+            recording_path: Chemin du fichier WAV brut
+            trim_seconds: Nombre de secondes à supprimer au début (pour l'overlap)
+        """
         try:
             # Vérifier si le fichier existe
             if not os.path.exists(recording_path):
@@ -507,7 +513,33 @@ class RobotARI:
                 logger.warning("⚠️ File too small, probably silence")
                 return "silence", "neutre"
 
-            # Utiliser Whisper pour la transcription (pré-chargé au démarrage)
+            # Si trim_seconds > 0, nettoyer l'overlap avant transcription
+            final_recording_path = recording_path
+            if trim_seconds > 0:
+                logger.info(f"✂️  Trimming {trim_seconds}s from beginning (overlap cleanup)")
+                import subprocess
+
+                # Créer fichier nettoyé
+                clean_path = recording_path.replace(".wav", "_clean.wav")
+
+                trim_cmd = [
+                    "sox",
+                    recording_path,
+                    clean_path,
+                    "trim",
+                    str(trim_seconds)
+                ]
+
+                result = subprocess.run(trim_cmd, capture_output=True, text=True, timeout=5)
+
+                if result.returncode == 0:
+                    logger.info(f"✅ Audio cleaned: {clean_path}")
+                    final_recording_path = clean_path
+                else:
+                    logger.warning(f"⚠️  Sox trim failed, using original: {result.stderr}")
+                    # Continuer avec le fichier original si le nettoyage échoue
+
+            # Utiliser Whisper pour la transcription sur le fichier final (nettoyé ou original)
             try:
                 logger.info("🎤 Starting Whisper transcription...")
                 if whisper_service is None:
@@ -521,7 +553,7 @@ class RobotARI:
                     ]
                     return random.choice(demo_responses)
 
-                result = whisper_service.transcribe(recording_path, language="fr")
+                result = whisper_service.transcribe(final_recording_path, language="fr")
                 transcription = result.get("text", "").strip()
 
                 if not transcription:
@@ -554,7 +586,7 @@ class RobotARI:
             logger.error(f"❌ Processing error: {e}", exc_info=True)
             return "error", "neutre"
 
-    def record_with_silence_detection(self, channel_id, name, max_silence_seconds=4, wait_before_stop=15):
+    def record_with_silence_detection(self, channel_id, name, max_silence_seconds=4, wait_before_stop=15, trim_seconds=0):
         """
         Record audio with silence detection and transcription (BATCH MODE)
         🤖 AUTO-TRACKING: Ajoute automatiquement à call_sequences pour assemblage
@@ -564,6 +596,7 @@ class RobotARI:
             name: Recording name
             max_silence_seconds: Seconds of silence before stopping
             wait_before_stop: Max wait time
+            trim_seconds: Seconds to trim from beginning (for overlap cleanup)
 
         Returns:
             (transcription, sentiment) tuple
@@ -578,13 +611,173 @@ class RobotARI:
         )
 
         if recording_path and os.path.exists(recording_path):
-            transcription, sentiment = self.process_recording(recording_path)
+            transcription, sentiment = self.process_recording(recording_path, trim_seconds=trim_seconds)
             logger.info(f"✅ Transcription completed")
             logger.info(f"   Transcription: '{transcription[:100]}'")
             logger.info(f"   Sentiment: {sentiment}")
 
             # 🤖 AUTO-TRACKING: Ajouter automatiquement à la séquence
             self._track_audio(channel_id, "client", f"{name}.wav", transcription, sentiment)
+
+            return transcription, sentiment
+        else:
+            logger.error("❌ Recording failed!")
+            return "silence", "neutre"
+
+    def play_and_record(self, channel_id, audio_name, recording_name, max_silence_seconds=2, wait_before_stop=15):
+        """
+        🎯 NOUVELLE MÉTHODE: Joue l'audio ET enregistre en overlap (ZERO GAP!)
+
+        Cette méthode élimine le gap entre la fin de l'audio et le début de l'enregistrement
+        en démarrant l'enregistrement légèrement avant la fin de l'audio.
+
+        Flow:
+        1. Démarre le playback
+        2. Attend (duration - 2s)
+        3. Démarre l'enregistrement (overlap de 2s)
+        4. Attend la fin du playback
+        5. Continue la détection de silence
+        6. Nettoie l'overlap avant transcription
+
+        Args:
+            channel_id: ID du canal
+            audio_name: Nom du fichier audio (ex: "hello", "q1", "retry")
+            recording_name: Nom de l'enregistrement
+            max_silence_seconds: Secondes de silence avant arrêt
+            wait_before_stop: Temps max d'écoute
+
+        Returns:
+            (transcription, sentiment) ou None si channel disconnected
+        """
+        # Charger audio_texts.json pour obtenir les durées
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        audio_texts_path = os.path.join(project_root, "audio_texts.json")
+
+        try:
+            with open(audio_texts_path, 'r', encoding='utf-8') as f:
+                audio_texts = json.load(f)
+        except Exception as e:
+            logger.warning(f"⚠️  Could not load audio_texts.json: {e}, using default overlap")
+            audio_texts = {}
+
+        # Obtenir la durée de l'audio (défaut: 5s si pas trouvé)
+        audio_duration = audio_texts.get(audio_name, {}).get("duration", 5.0)
+        overlap_seconds = 2.0  # Overlap fixe de 2s
+
+        logger.info(f"🎬 Playing '{audio_name}' with ZERO-GAP recording")
+        logger.info(f"   Audio duration: {audio_duration}s | Overlap: {overlap_seconds}s")
+
+        # 1. Démarrer le playback (sans attendre la fin)
+        url = f"{ARI_URL}/ari/channels/{channel_id}/play"
+        project_root = os.path.dirname(os.path.abspath(__file__))
+        audio_path = os.path.join(project_root, "audio", f"{audio_name}.wav")
+
+        if os.path.exists(audio_path):
+            media = f"sound:minibot/{audio_name}"
+            logger.info(f"🎵 Starting playback: minibot/{audio_name}")
+        else:
+            logger.warning(f"⚠️ File not found: {audio_path}, using beep")
+            media = "sound:beep"
+
+        data = {"media": media}
+        response = requests.post(url, json=data, auth=self.auth)
+
+        if response.status_code not in [200, 201]:
+            logger.error(f"❌ Failed to start playback: {response.text}")
+            return None  # Channel disconnected
+
+        playback_id = response.json().get('id')
+        if not playback_id:
+            logger.error("❌ No playback ID returned")
+            return None
+
+        # 🤖 AUTO-TRACKING: Tracker l'audio du bot
+        self._track_audio(channel_id, "bot", f"{audio_name}.wav")
+
+        # 2. Attendre presque toute la durée de l'audio
+        wait_time = max(0.1, audio_duration - overlap_seconds)
+        logger.info(f"⏳ Waiting {wait_time:.1f}s before starting recording...")
+        time.sleep(wait_time)
+
+        # 3. Démarrer l'enregistrement MAINTENANT (pendant que l'audio joue encore)
+        logger.info(f"🎙️  Starting recording with {overlap_seconds}s overlap...")
+        url_record = f"{ARI_URL}/ari/channels/{channel_id}/record"
+        data_record = {
+            "name": recording_name,
+            "format": "wav",
+            "maxDurationSeconds": 30,
+            "terminateOn": "#",
+            "beep": False,
+            "ifExists": "overwrite"
+        }
+
+        response_record = requests.post(url_record, json=data_record, auth=self.auth)
+
+        if response_record.status_code not in [200, 201]:
+            logger.error(f"❌ Failed to start recording: {response_record.text}")
+            return "silence", "neutre"
+
+        logger.info(f"✅ Recording started with overlap")
+
+        # 4. Attendre que le playback soit terminé
+        self.wait_for_playback_finished(channel_id, playback_id)
+
+        # 5. Continuer la détection de silence (code identique à record_audio)
+        recording_path = f"{RECORDINGS_PATH}/{recording_name}.wav"
+        start_time = time.time()
+        speech_detected = False
+        speech_start_time = None
+
+        logger.info(f"⏳ Continuing silence detection (max {wait_before_stop}s)...")
+
+        while time.time() - start_time < wait_before_stop:
+            elapsed = time.time() - start_time
+
+            # Vérifier si l'enregistrement est toujours en cours
+            status_url = f"{ARI_URL}/ari/recordings/live/{recording_name}"
+            status_resp = requests.get(status_url, auth=self.auth)
+
+            if status_resp.status_code == 404:
+                logger.info(f"⏹️ Recording ended after {elapsed:.1f}s")
+                break
+
+            # Détection de silence
+            if elapsed < 1.0:
+                logger.debug(f"⏳ Waiting for speech... {elapsed:.1f}s")
+            elif elapsed < 3.5 and not speech_detected:
+                speech_detected = True
+                speech_start_time = time.time()
+                logger.info(f"🗣️ Speech assumed to have started")
+            elif speech_detected:
+                time_since_speech = time.time() - speech_start_time
+                if time_since_speech >= max_silence_seconds:
+                    logger.info(f"🤫 Silence detected after {max_silence_seconds}s (total: {elapsed:.1f}s)")
+
+                    # Arrêter l'enregistrement
+                    stop_url = f"{ARI_URL}/ari/recordings/live/{recording_name}/stop"
+                    stop_resp = requests.post(stop_url, auth=self.auth)
+
+                    if stop_resp.status_code in [200, 204]:
+                        logger.info(f"✅ Recording stopped successfully")
+                        time.sleep(0.5)
+                        break
+
+            time.sleep(0.5)
+        else:
+            # Temps max atteint
+            stop_url = f"{ARI_URL}/ari/recordings/live/{recording_name}/stop"
+            requests.post(stop_url, auth=self.auth)
+            logger.info(f"⏱️ Recording stopped after max time ({wait_before_stop}s)")
+
+        # 6. Traiter l'enregistrement avec nettoyage de l'overlap
+        if os.path.exists(recording_path):
+            transcription, sentiment = self.process_recording(recording_path, trim_seconds=overlap_seconds)
+            logger.info(f"✅ Transcription completed (overlap cleaned)")
+            logger.info(f"   Transcription: '{transcription[:100]}'")
+            logger.info(f"   Sentiment: {sentiment}")
+
+            # 🤖 AUTO-TRACKING
+            self._track_audio(channel_id, "client", f"{recording_name}.wav", transcription, sentiment)
 
             return transcription, sentiment
         else:

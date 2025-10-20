@@ -616,19 +616,21 @@ def scenario_production(robot, channel_id, phone_number, campaign_id=None):
         logger.info("📢 STEP 1: HELLO - Introduction")
         logger.info("=" * 60)
 
-        # Jouer hello et vérifier que ça marche (sinon = raccrochage)
-        playback_id = robot.play_audio_file(channel_id, "hello")
-        if playback_id is None:
-            raise Exception("Channel disconnected during hello playback")
-
-        # Enregistrer la réponse
+        # Jouer hello + enregistrer avec ZERO GAP (overlap de 2s pour capturer "Oui" rapides)
         recording_hello = f"prod_hello_{channel_id}_{int(time.time())}"
-        trans_hello, sent_hello = robot.record_with_silence_detection(
+        result = robot.play_and_record(
             channel_id,
-            recording_hello,
+            "hello",  # audio_name
+            recording_hello,  # recording_name
             max_silence_seconds=LISTEN_TIMEOUTS["hello"]["max_silence_seconds"],
             wait_before_stop=LISTEN_TIMEOUTS["hello"]["wait_before_stop"]
         )
+
+        # Vérifier si channel disconnected
+        if result is None:
+            raise Exception("Channel disconnected during hello playback")
+
+        trans_hello, sent_hello = result
 
         logger.info(f"📝 Hello Response: '{trans_hello[:100] if trans_hello else 'No response'}...'")
         logger.info(f"💭 Sentiment: {sent_hello}")
@@ -710,18 +712,21 @@ def scenario_production(robot, channel_id, phone_number, campaign_id=None):
             logger.info("=" * 60)
 
             retry_used = True
-            playback_id = robot.play_audio_file(channel_id, "retry")
-            if playback_id is None:
-                raise Exception("Channel disconnected during retry playback")
 
-            # Enregistrer réponse après retry
+            # Jouer retry + enregistrer avec ZERO GAP
             recording_retry = f"prod_retry_{channel_id}_{int(time.time())}"
-            trans_retry, sent_retry = robot.record_with_silence_detection(
+            result_retry = robot.play_and_record(
                 channel_id,
-                recording_retry,
+                "retry",  # audio_name
+                recording_retry,  # recording_name
                 max_silence_seconds=LISTEN_TIMEOUTS["retry"]["max_silence_seconds"],
                 wait_before_stop=LISTEN_TIMEOUTS["retry"]["wait_before_stop"]
             )
+
+            if result_retry is None:
+                raise Exception("Channel disconnected during retry playback")
+
+            trans_retry, sent_retry = result_retry
 
             logger.info(f"📝 Retry Response: '{trans_retry[:100] if trans_retry else 'No response'}...'")
             logger.info(f"💭 Sentiment: {sent_retry}")
@@ -768,18 +773,21 @@ def scenario_production(robot, channel_id, phone_number, campaign_id=None):
             logger.info("=" * 60)
 
             audio_file = f"q{q_num}"
-            playback_id = robot.play_audio_file(channel_id, audio_file)
-            if playback_id is None:
-                raise Exception(f"Channel disconnected during {audio_file} playback")
 
-            # Enregistrer réponse
+            # Jouer question + enregistrer avec ZERO GAP
             recording_q = f"prod_q{q_num}_{channel_id}_{int(time.time())}"
-            trans_q, sent_q = robot.record_with_silence_detection(
+            result_q = robot.play_and_record(
                 channel_id,
-                recording_q,
+                audio_file,  # audio_name (q1, q2, q3)
+                recording_q,  # recording_name
                 max_silence_seconds=LISTEN_TIMEOUTS[f"q{q_num}"]["max_silence_seconds"],
                 wait_before_stop=LISTEN_TIMEOUTS[f"q{q_num}"]["wait_before_stop"]
             )
+
+            if result_q is None:
+                raise Exception(f"Channel disconnected during {audio_file} playback")
+
+            trans_q, sent_q = result_q
 
             logger.info(f"📝 Q{q_num} Response: '{trans_q[:100] if trans_q else 'No response'}...'")
             logger.info(f"💭 Sentiment: {sent_q}")
@@ -804,18 +812,20 @@ def scenario_production(robot, channel_id, phone_number, campaign_id=None):
         logger.info("🎯 STEP FINAL: IS_LEADS - Question de qualification")
         logger.info("=" * 60)
 
-        playback_id = robot.play_audio_file(channel_id, "is_leads")
-        if playback_id is None:
-            raise Exception("Channel disconnected during is_leads playback")
-
-        # Enregistrer réponse IS_LEADS
+        # Jouer is_leads + enregistrer avec ZERO GAP
         recording_is_leads = f"prod_is_leads_{channel_id}_{int(time.time())}"
-        trans_is_leads, sent_is_leads = robot.record_with_silence_detection(
+        result_is_leads = robot.play_and_record(
             channel_id,
-            recording_is_leads,
+            "is_leads",  # audio_name
+            recording_is_leads,  # recording_name
             max_silence_seconds=LISTEN_TIMEOUTS["is_leads"]["max_silence_seconds"],
             wait_before_stop=LISTEN_TIMEOUTS["is_leads"]["wait_before_stop"]
         )
+
+        if result_is_leads is None:
+            raise Exception("Channel disconnected during is_leads playback")
+
+        trans_is_leads, sent_is_leads = result_is_leads
 
         logger.info(f"📝 Is_Leads Response: '{trans_is_leads[:100] if trans_is_leads else 'No response'}...'")
         logger.info(f"💭 Sentiment: {sent_is_leads}")
@@ -846,18 +856,20 @@ def scenario_production(robot, channel_id, phone_number, campaign_id=None):
             logger.info("📅 CONFIRM: Asking for time slot preference")
             logger.info("=" * 60)
 
-            playback_id = robot.play_audio_file(channel_id, "confirm")
-            if playback_id is None:
-                raise Exception("Channel disconnected during confirm playback")
-
-            # Enregistrer réponse Confirm
+            # Jouer confirm + enregistrer avec ZERO GAP
             recording_confirm = f"prod_confirm_{channel_id}_{int(time.time())}"
-            trans_confirm, sent_confirm = robot.record_with_silence_detection(
+            result_confirm = robot.play_and_record(
                 channel_id,
-                recording_confirm,
+                "confirm",  # audio_name
+                recording_confirm,  # recording_name
                 max_silence_seconds=LISTEN_TIMEOUTS["confirm"]["max_silence_seconds"],
                 wait_before_stop=LISTEN_TIMEOUTS["confirm"]["wait_before_stop"]
             )
+
+            if result_confirm is None:
+                raise Exception("Channel disconnected during confirm playback")
+
+            trans_confirm, sent_confirm = result_confirm
 
             logger.info(f"📝 Confirm Response: '{trans_confirm[:100] if trans_confirm else 'No response'}...'")
             logger.info(f"💭 Sentiment: {sent_confirm}")
