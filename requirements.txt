@@ -8,6 +8,7 @@ ari==0.1.3
 requests==2.31.0
 
 # Transcription
+ctranslate2==4.4.0
 faster-whisper==1.2.0
 soundfile==0.13.1
 scipy==1.15.3

@@ -166,7 +166,7 @@ class WhisperService:
                 segments, info = self.model.transcribe(
                     audio_to_transcribe,
                     language=language,
-                    vad_filter=True,  # VAD aide à filtrer les silences
+                    vad_filter=False,  # DISABLE: prevents GPU hanging with CUDA 12.1
                     beam_size=1  # Réduit pour vitesse
                 )
             finally:

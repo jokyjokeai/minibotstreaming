@@ -455,38 +455,81 @@ def detect_whisper_device():
 
         log("🎮 GPU CUDA détecté !", "success")
 
-        # GPU détecté, vérifier cuDNN 9.x (système + pip)
-        # 1. Chercher dans /usr (install système)
-        success, output = run_command("find /usr -name 'libcudnn_ops.so.9*' 2>/dev/null | head -1", capture=True, check=False)
+        # GPU détecté, vérifier cuDNN 8.x ou 9.x (système + pip)
+        # PRIORITÉ: cuDNN 8.x compatible CUDA 12.1
+
+        # 1. Chercher cuDNN 8.x dans /usr (install système)
+        success, output = run_command("find /usr -name 'libcudnn_ops.so.8*' 2>/dev/null | head -1", capture=True, check=False)
         if success and output.strip():
-            log("🎮 GPU + cuDNN 9.x détecté (système), utilisation GPU pour Whisper", "success")
+            log("🎮 GPU + cuDNN 8.x détecté (système), utilisation GPU pour Whisper", "success")
             return "cuda", "float16"
 
-        # 2. Chercher package pip nvidia-cudnn-cu12
+        # 2. Chercher package pip nvidia-cudnn-cu12 version 8.x
         success, output = run_command("pip3 show nvidia-cudnn-cu12 2>/dev/null", capture=True, check=False)
-        if success and "Version: 9." in output:
-            log("🎮 GPU + cuDNN 9.x détecté (pip), utilisation GPU pour Whisper", "success")
+        if success and "Version: 8." in output:
+            log("🎮 GPU + cuDNN 8.x détecté (pip), utilisation GPU pour Whisper", "success")
             return "cuda", "float16"
 
-        # 3. Essayer d'importer directement
+        # 3. Essayer d'importer directement et vérifier version 8.x
         success, output = run_command("python3 -c 'import nvidia.cudnn; print(nvidia.cudnn.__version__)'", capture=True, check=False)
-        if success and "9." in output:
-            log("🎮 GPU + cuDNN 9.x détecté (Python), utilisation GPU pour Whisper", "success")
+        if success and "8." in output:
+            log("🎮 GPU + cuDNN 8.x détecté (Python), utilisation GPU pour Whisper", "success")
             return "cuda", "float16"
 
-        # ========== NOUVEAU: INSTALLATION AUTOMATIQUE cuDNN ==========
-        log("⚠️  GPU détecté mais cuDNN 9.x manquant", "warning")
-        log("📦 Installation automatique de cuDNN pour GPU...", "info")
+        # ========== FIX GPU: INSTALLATION cuDNN 8.x compatible CUDA 12.1 ==========
+        log("⚠️  GPU détecté mais cuDNN compatible manquant", "warning")
+        log("📦 Installation automatique de cuDNN 8.x + cublas pour GPU (CUDA 12.1)...", "info")
 
-        success, output = run_command("pip3 install nvidia-cudnn-cu12==9.1.0.70", capture=True, check=False)
+        success, output = run_command("pip3 install --user nvidia-cublas-cu12 nvidia-cudnn-cu12==8.9.2.26", capture=True, check=False)
 
         if success:
-            log("✅ cuDNN 9.x installé avec succès !", "success")
+            log("✅ cuDNN 8.x + cublas installés avec succès !", "success")
+
+            # Configure LD_LIBRARY_PATH pour que Python trouve les librairies NVIDIA
+            log("🔧 Configuration LD_LIBRARY_PATH pour GPU...", "info")
+
+            # Script Python pour générer le bon LD_LIBRARY_PATH
+            ld_path_script = """
+import os
+try:
+    import nvidia.cublas.lib
+    import nvidia.cudnn.lib
+    cublas_path = os.path.dirname(nvidia.cublas.lib.__file__)
+    cudnn_path = os.path.dirname(nvidia.cudnn.lib.__file__)
+    print(f"{cublas_path}:{cudnn_path}")
+except Exception as e:
+    print("")
+"""
+
+            success_ld, ld_paths = run_command(f"python3 -c '{ld_path_script}'", capture=True, check=False)
+
+            if success_ld and ld_paths.strip():
+                # Ajouter à .bashrc pour permanence (utilisateur root)
+                bashrc_path = os.path.expanduser("~/.bashrc")
+                ld_export = f'export LD_LIBRARY_PATH="{ld_paths.strip()}:$LD_LIBRARY_PATH"'
+
+                # Vérifier si déjà présent
+                bashrc_has_ld = False
+                if os.path.exists(bashrc_path):
+                    with open(bashrc_path, 'r') as f:
+                        if 'nvidia.cublas' in f.read() or 'nvidia.cudnn' in f.read():
+                            bashrc_has_ld = True
+
+                if not bashrc_has_ld:
+                    with open(bashrc_path, 'a') as f:
+                        f.write(f"\n# MiniBotPanel GPU Libraries (CUDA 12.1 + cuDNN 8.x)\n")
+                        f.write(f"{ld_export}\n")
+                    log("✅ LD_LIBRARY_PATH configuré dans ~/.bashrc", "success")
+                else:
+                    log("✅ LD_LIBRARY_PATH déjà configuré", "success")
+
+                # Set for current session aussi
+                os.environ['LD_LIBRARY_PATH'] = ld_paths.strip() + ":" + os.environ.get('LD_LIBRARY_PATH', '')
 
             # Vérifier que l'installation a fonctionné
             success, output = run_command("python3 -c 'import nvidia.cudnn; print(nvidia.cudnn.__version__)'", capture=True, check=False)
-            if success and "9." in output:
-                log("🎮 GPU + cuDNN 9.x prêt, utilisation GPU pour Whisper", "success")
+            if success and "8." in output:
+                log("🎮 GPU + cuDNN 8.x prêt, utilisation GPU pour Whisper", "success")
                 return "cuda", "float16"
             else:
                 log("⚠️  cuDNN installé mais non détecté, utilisation CPU par sécurité", "warning")
