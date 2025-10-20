@@ -38,31 +38,31 @@ except Exception as e:
 LISTEN_TIMEOUTS = {
     "hello": {
         "max_silence_seconds": 2,
-        "wait_before_stop": 8
+        "wait_before_stop": 15  # Augmenté de 8 → 15s pour laisser le temps de répondre
     },
     "retry": {
         "max_silence_seconds": 2,
-        "wait_before_stop": 6
+        "wait_before_stop": 15  # Augmenté de 6 → 15s pour laisser le temps de répondre
     },
     "q1": {
         "max_silence_seconds": 2,
-        "wait_before_stop": 10
+        "wait_before_stop": 15  # Augmenté de 10 → 15s pour laisser le temps de répondre
     },
     "q2": {
         "max_silence_seconds": 2,
-        "wait_before_stop": 10
+        "wait_before_stop": 15  # Augmenté de 10 → 15s pour laisser le temps de répondre
     },
     "q3": {
         "max_silence_seconds": 2,
-        "wait_before_stop": 10
+        "wait_before_stop": 15  # Augmenté de 10 → 15s pour laisser le temps de répondre
     },
     "is_leads": {
         "max_silence_seconds": 2,
-        "wait_before_stop": 8
+        "wait_before_stop": 15  # Augmenté de 8 → 15s pour laisser le temps de répondre
     },
     "confirm": {
         "max_silence_seconds": 2,
-        "wait_before_stop": 6
+        "wait_before_stop": 15  # Augmenté de 6 → 15s pour laisser le temps de répondre
     }
 }
 

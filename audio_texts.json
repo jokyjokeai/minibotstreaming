@@ -17,7 +17,7 @@
   "hello": {
     "file": "hello.wav",
     "duration": 15.5,
-    "text": "Oui bonjour je suis Thierry de l'association France Patrimoine.  Nous aidons les épargnants à mieux protéger leur capital et optimiser leur placement.  J'ai juste trois petites questions pour voir si nous pouvons vous aider à protéger,  optimiser votre patrimoine. Ça vous va ?"
+    "text": "Oui bonjour je suis Thierry de l'association France Patrimoine.  Nous aidons les épargnants à mieux protéger leur capital et optimiser leur placement.  J'ai juste trois petites questions pour voir si nous pouvons vous aider à protéger, optimiser votre patrimoine. Ça vous va ?"
   },
   "is_leads": {
     "file": "is_leads.wav",
@@ -47,6 +47,6 @@
   "test_audio": {
     "file": "test_audio.wav",
     "duration": 8.2,
-    "text": "Ceci est le test d'initialisation de Faster Whisper pour l'installation de mini-butt panel."
+    "text": "Ceci est le test d'initialisation de Faster Whisper pour l'installation de MiniBot Panel."
   }
 }

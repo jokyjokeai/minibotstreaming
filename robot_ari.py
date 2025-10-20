@@ -445,8 +445,9 @@ class RobotARI:
                         # Première seconde : on attend que la personne commence
                         logger.debug(f"⏳ Waiting for speech... {elapsed:.1f}s")
 
-                    elif elapsed < 2.5 and not speech_detected:
-                        # Si pas de réponse après 1-2 secondes, on considère qu'elle parle
+                    elif elapsed < 3.5 and not speech_detected:
+                        # Si pas de réponse après 1-3.5 secondes, on considère qu'elle parle
+                        # Augmenté de 2.5s → 3.5s pour éviter de couper les réponses courtes ("Oui")
                         speech_detected = True
                         speech_start_time = time.time()
                         logger.info(f"🗣️ Speech assumed to have started")

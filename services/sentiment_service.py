@@ -31,9 +31,11 @@ class SentimentService:
             "bien sur", "évidemment", "clairement", "forcément", "assurément",
 
             # Positionnement positif
-            "pourquoi pas", "allons-y", "banco", "go", "let's go", "on y va",
+            "pourquoi pas", "allons-y", "allons", "allez", "allez-y", "vas-y", "banco",
+            "go", "let's go", "on y va", "c'est parti", "cest parti", "c parti",
+            "on se lance", "je me lance", "on fonce", "partez", "go go go",
             "je veux", "je veux bien", "je voudrais", "j'aimerais", "j'aimerai",
-            "on peut", "c'est possible", "ça marche", "ca marche",
+            "on peut", "c'est possible", "ça marche", "ca marche", "nickel", "impec",
 
             # Acceptation
             "accepte", "accepter", "j'accepte", "prendre", "je prends",
@@ -156,6 +158,15 @@ class SentimentService:
         if "volontiers" in normalized_text:
             logger.info("✅ Found positive idiom: 'volontiers'")
             return "positive", 0.8
+
+        # Expressions d'enthousiasme (c'est parti, allez, etc.)
+        if any(expr in normalized_text for expr in ["c'est parti", "cest parti", "c parti"]):
+            logger.info("✅ Found positive idiom: 'c'est parti' (let's go)")
+            return "positive", 0.85
+
+        if normalized_text.startswith(("allez", "allons", "vas-y", "go")):
+            logger.info("✅ Found enthusiastic start expression")
+            return "positive", 0.85
 
         # ============================================================
         # PRIORITÉ 1: DÉTECTION INTERROGATIVE (questions/méfiance)
