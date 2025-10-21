@@ -233,25 +233,23 @@ class AsteriskInstaller:
         if os.path.exists(self.install_dir):
             run_cmd(f"rm -rf {self.install_dir}", "Removing previous installation")
         
-        # Télécharger version stable au lieu de git dev
+        # Télécharger Asterisk 22.6.0 LTS stable (version exacte pour streaming/IA)
+        exact_version = "22.6.0"
         run_cmd(
-            f"wget -q https://downloads.asterisk.org/pub/telephony/asterisk/asterisk-{self.asterisk_version}-current.tar.gz",
-            f"Downloading Asterisk {self.asterisk_version} stable release",
+            f"wget -q https://github.com/asterisk/asterisk/releases/download/{exact_version}/asterisk-{exact_version}.tar.gz",
+            f"Downloading Asterisk {exact_version} LTS stable release",
             timeout=300
         )
         
+        exact_version = "22.6.0"
         run_cmd(
-            f"tar -xzf asterisk-{self.asterisk_version}-current.tar.gz",
-            f"Extracting Asterisk {self.asterisk_version}",
+            f"tar -xzf asterisk-{exact_version}.tar.gz",
+            f"Extracting Asterisk {exact_version}",
             timeout=60
         )
         
-        # Identifier le répertoire extrait (format: asterisk-22.x.x)
-        asterisk_dirs = [d for d in os.listdir('.') if d.startswith(f'asterisk-{self.asterisk_version}') and os.path.isdir(d)]
-        if not asterisk_dirs:
-            raise RuntimeError(f"Could not find extracted Asterisk directory")
-        
-        extracted_dir = asterisk_dirs[0]
+        # Répertoire extrait avec version exacte
+        extracted_dir = f"asterisk-{exact_version}"
         if os.path.exists(self.install_dir):
             run_cmd(f"rm -rf {self.install_dir}", "Removing existing directory")
         
@@ -708,8 +706,10 @@ bindport=8088
         log("✅ Asterisk configurations installed")
     
     def _generate_pjsip_config(self, sip_config: dict):
-        """Génère la configuration PJSIP simple qui fonctionne (basée sur config VPS validée)"""
+        """Génère la configuration PJSIP corrigée pour streaming/IA (basée sur recherche web)"""
         log(f"📞 Generating PJSIP config for {sip_config['username']}@{sip_config['server']}")
+        
+        trunk_name = f"{sip_config['username']}-trunk"
         
         pjsip_conf = f"""[global]
 type=global
@@ -720,44 +720,81 @@ type=transport
 protocol=udp
 bind=0.0.0.0:5060
 
-[{sip_config['username']}]
+[{trunk_name}]
 type=registration
 transport=transport-udp
-outbound_auth={sip_config['username']}-auth
+outbound_auth={trunk_name}-auth
 server_uri=sip:{sip_config['server']}
 client_uri=sip:{sip_config['username']}@{sip_config['server']}
 retry_interval=60
 
-[{sip_config['username']}-auth]
+[{trunk_name}-auth]
 type=auth
 auth_type=userpass
 username={sip_config['username']}
 password={sip_config['password']}
 
-[bitcall]
+[{trunk_name}-aor]
+type=aor
+max_contacts=2
+remove_existing=yes
+contact=sip:{sip_config['server']}
+
+[{trunk_name}-endpoint]
 type=endpoint
 transport=transport-udp
 context=outbound-robot
-outbound_auth={sip_config['username']}-auth
-aors=bitcall-aor
+outbound_auth={trunk_name}-auth
+aors={trunk_name}-aor
 allow=!all,ulaw,alaw,gsm
 from_user={sip_config['username']}
 from_domain={sip_config['server']}
 
-[bitcall-aor]
-type=aor
-contact=sip:{sip_config['server']}
-
-[bitcall-identify]
+[{trunk_name}-identify]
 type=identify
-endpoint=bitcall
+endpoint={trunk_name}-endpoint
 match={sip_config['server']}
 """
         
         with open("/etc/asterisk/pjsip.conf", "w") as f:
             f.write(pjsip_conf)
         
-        log("✅ PJSIP configuration generated with real SIP credentials")
+        log("✅ PJSIP configuration generated with corrected parameters (max_contacts, remove_existing)")
+    
+    def _generate_ari_streaming_config(self):
+        """Génère la configuration ARI optimisée pour streaming temps réel et IA"""
+        log("🎯 Generating ARI streaming configuration for real-time AI")
+        
+        # Configuration ARI avec optimisations streaming
+        ari_conf = """[general]
+enabled = yes
+pretty = yes
+websocket_write_timeout = 100
+
+[robot]
+type = user
+read_only = no
+password = MiniBotAI2025!
+"""
+        
+        # Configuration HTTP avec WebSocket pour IA
+        http_conf = """[general]
+enabled=yes
+bindaddr=0.0.0.0
+bindport=8088
+websocket_timeout=30
+
+[websockets]
+enabled=yes
+"""
+        
+        with open("/etc/asterisk/ari.conf", "w") as f:
+            f.write(ari_conf)
+        
+        with open("/etc/asterisk/http.conf", "w") as f:
+            f.write(http_conf)
+        
+        log("✅ ARI streaming configuration generated for real-time AI integration")
     
     def _replace_config(self, source_name: str, dest_path: str):
         """Remplace complètement le fichier de configuration (pour PJSIP)"""
@@ -1235,9 +1272,10 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
         run_cmd('asterisk -rx "module reload res_pjsip.so"', check=False)
         time.sleep(2)
         
-        # Forcer une nouvelle registration
+        # Forcer une nouvelle registration avec nom de trunk correct
+        trunk_name = f"{sip_config['username']}-trunk"
         log("📞 Forcing new registration...")
-        run_cmd(f'asterisk -rx "pjsip send register {sip_config["username"]}"', check=False)
+        run_cmd(f'asterisk -rx "pjsip send register {trunk_name}"', check=False)
         time.sleep(3)
         
         max_attempts = 6
@@ -1256,11 +1294,12 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
                     log(f"💻 Command: asterisk -rx \"pjsip show registrations\"")
                     log(f"📤 Output: {result.stdout}")
                     
-                    # Chercher la registration par username
-                    if sip_config["username"] in result.stdout:
+                    # Chercher la registration par trunk name
+                    trunk_name = f"{sip_config['username']}-trunk"
+                    if trunk_name in result.stdout:
                         if "Registered" in result.stdout:
                             log("✅ SIP registration successful!", "success")
-                            log(f"📞 {sip_config['username']} is registered")
+                            log(f"📞 {trunk_name} is registered")
                             return True
                         elif "Unregistered" in result.stdout:
                             log(f"⚠️ Registration unregistered - attempt {attempt}", "warning")
@@ -1269,7 +1308,7 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
                         else:
                             log(f"🔄 Registration in progress - attempt {attempt}")
                     else:
-                        log(f"⚠️ No {sip_config['username']} registration found - attempt {attempt}")
+                        log(f"⚠️ No {trunk_name} registration found - attempt {attempt}")
                 else:
                     log(f"❌ Command failed - attempt {attempt}")
                 
@@ -1288,7 +1327,8 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
         log("   - SIP credentials in /etc/asterisk/pjsip.conf", "warning")
         log("   - Network connectivity to SIP provider", "warning")
         log("   - Provider allows your IP address", "warning")
-        log(f"   - Manual test: asterisk -rx 'pjsip send register {sip_config['username']}'", "warning")
+        trunk_name = f"{sip_config['username']}-trunk"
+        log(f"   - Manual test: asterisk -rx 'pjsip send register {trunk_name}'", "warning")
         return False
         log("  - Asterisk logs: sudo tail -f /var/log/asterisk/messages")
         
