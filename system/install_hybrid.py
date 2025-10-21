@@ -1010,7 +1010,9 @@ class StreamingInstaller:
             base_packages = [
                 "python3", "python3-pip", "python3-venv", "python3-dev",
                 "build-essential", "git", "wget", "curl", "unzip",
-                "portaudio19-dev", "libasound2-dev", "ffmpeg", "sox", "ufw", "fail2ban"
+                "portaudio19-dev", "libasound2-dev", "ffmpeg", "sox", "ufw", "fail2ban",
+                "espeak", "espeak-data", "libespeak1", "libespeak-dev",  # Pour TTS fallback
+                "libffi-dev", "libssl-dev"  # Pour dépendances Python TTS
             ]
             
             run_cmd("apt-get update")
@@ -1836,8 +1838,25 @@ net.core.netdev_max_backlog = 5000
             # Vérifier que les dépendances TTS sont installées
             result = run_cmd("python3 -c 'import TTS; print(\"TTS available\")'", check=False)
             if result.returncode != 0:
-                log("📦 Installing TTS dependencies...")
-                run_cmd("pip3 install TTS torch transformers accelerate", timeout=600)
+                log("📦 Installing TTS dependencies (this may take several minutes)...")
+                
+                # Installation avec GPU support auto-détection
+                gpu_available = run_cmd("nvidia-smi", check=False).returncode == 0
+                
+                if gpu_available:
+                    log("🚀 GPU detected, installing with CUDA support")
+                    run_cmd("pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118", timeout=900)
+                else:
+                    log("💻 CPU-only installation")
+                    run_cmd("pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu", timeout=900)
+                
+                # Installation TTS et autres dépendances
+                run_cmd("pip3 install TTS transformers datasets accelerate", timeout=600)
+                
+                # Vérification finale
+                result = run_cmd("python3 -c 'import TTS; print(\"TTS successfully installed\")'", check=False)
+                if result.returncode != 0:
+                    log("⚠️ TTS installation may need manual intervention", "warning")
             
             # Tester le service TTS
             tts_test_script = self.project_dir / "services" / "tts_voice_clone.py"
