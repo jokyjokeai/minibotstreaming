@@ -7,15 +7,16 @@ pydantic==2.5.3
 ari==0.1.3
 requests==2.31.0
 
-# Transcription
-ctranslate2==4.4.0
-faster-whisper==1.2.0
+# Streaming Audio & ASR 
+vosk==0.3.45
+webrtcvad==2.0.10
+websockets==12.0
+numpy==1.24.3
+pyaudio==0.2.14
 soundfile==0.13.1
-scipy==1.15.3
-numba==0.62.1
 
-# Sentiment Analysis
-textblob==0.17.1
+# NLP & Intent (Local)
+ollama==0.3.3
 
 # Database
 sqlalchemy==2.0.25
@@ -24,6 +25,11 @@ alembic==1.13.1
 
 # Utilities
 python-dotenv==1.0.0
+pyyaml==6.0.1
 
 # WebSocket client (for ARI)
 websocket-client==1.7.0
+
+# Audio Processing
+librosa==0.10.1
+scipy==1.15.3

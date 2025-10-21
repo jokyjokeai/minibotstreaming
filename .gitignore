@@ -1,55 +1,309 @@
-# MiniBotPanel v2 - .gitignore
+# =============================================================================
+# .gitignore pour MiniBotPanel v2 - Architecture Streaming
+# Évite de pousser des fichiers sensibles ou temporaires
+# =============================================================================
 
-# Secrets et configuration locale
+# ===============================
+# FICHIERS SECRETS ET SENSIBLES
+# ===============================
+
+# Configuration avec secrets
 .env
-*.env
 .env.local
+.env.production
+.env.staging
+config_secrets.py
 
-# Logs
+# Credentials et tokens
+*.key
+*.pem
+*.p12
+*.pfx
+credentials/
+secrets/
+auth/
+
+# Sauvegardes de configuration avec mots de passe
+*.conf.backup
+*.conf.bak
+
+# ===============================
+# LOGS ET ENREGISTREMENTS
+# ===============================
+
+# Logs système
 logs/
 *.log
+*.log.*
 
-# Enregistrements audio
+# Enregistrements audio (données personnelles)
 recordings/
-assembled_audio/
-transcripts/
+*.wav
+*.mp3
+*.m4a
+*.flac
+*.ogg
 
-# Cache Python
+# Audio assemblé (contient conversations)
+assembled_audio/
+
+# Transcriptions (données personnelles)
+transcripts/
+*.json.transcription
+
+# ===============================
+# BASE DE DONNÉES
+# ===============================
+
+# Backups base de données
+*.sql
+*.db
+*.sqlite
+*.sqlite3
+db_backup/
+database_dumps/
+
+# ===============================
+# MODÈLES IA ET CACHE
+# ===============================
+
+# Modèles Vosk (volumineux)
+/var/lib/vosk-models/
+vosk-models/
+models/
+
+# Cache Ollama (volumineux)
+.ollama/
+ollama_cache/
+
+# Cache Hugging Face (volumineux)
+.cache/
+huggingface_cache/
+
+# Modèles téléchargés
+*.bin
+*.onnx
+*.tflite
+*.pt
+*.pth
+
+# ===============================
+# FICHIERS TEMPORAIRES PYTHON
+# ===============================
+
+# Bytecode Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+
+# Distribution / packaging
 .Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Cache Whisper (très lourd)
-.cache/
-*.cache
+# PyInstaller
+*.manifest
+*.spec
 
-# Base de données locale
-*.db
-*.sqlite
-*.sqlite3
+# Installer logs
+pip-log.txt
+pip-delete-this-directory.txt
 
-# Fichiers système
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Environments
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ===============================
+# FICHIERS TEMPORAIRES SYSTÈME
+# ===============================
+
+# macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+
+# Linux
+*~
+.directory
+.Trash-*
+
+# Windows
 Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+
+# ===============================
+# OUTILS DÉVELOPPEMENT
+# ===============================
+
+# IDEs
+.vscode/
+.idea/
 *.swp
 *.swo
 *~
 
-# Backups
-*.bak
-backup_*/
+# Jupyter Notebooks checkpoints
+.ipynb_checkpoints
 
-# IDE
-.vscode/
-.idea/
-*.code-workspace
+# ===============================
+# FICHIERS TEMPORAIRES STREAMING
+# ===============================
 
-# Fichiers temporaires
-temp_*.py
-tmp/
+# Buffers audio temporaires
+audio_buffer/
+temp_audio/
 *.tmp
+*.temp
 
-# Rapport installation (généré automatiquement)
+# Sessions streaming temporaires
+streaming_sessions/
+*.session
+
+# Stats temporaires
+temp_stats/
+*.stats
+
+# ===============================
+# SYSTÈME ASTERISK
+# ===============================
+
+# Logs Asterisk (contiennent numéros)
+/var/log/asterisk/
+asterisk_logs/
+
+# Enregistrements Asterisk
+/var/spool/asterisk/recording/
+/var/spool/asterisk/monitor/
+
+# ===============================
+# BACKUPS ET ARCHIVES
+# ===============================
+
+# Archives
+*.zip
+*.tar.gz
+*.tar.bz2
+*.rar
+*.7z
+
+# Backups système
+backup/
+backups/
+*.backup
+*.bak
+
+# ===============================
+# DONNÉES DE TEST
+# ===============================
+
+# Contacts de test (pourraient contenir de vraies données)
+test_contacts.csv
+contacts_*.csv
+leads_*.csv
+
+# Campagnes de test
+test_campaigns/
+demo_data/
+
+# ===============================
+# PERFORMANCE ET MONITORING
+# ===============================
+
+# Profiling
+*.prof
+profile_results/
+
+# Monitoring temporaire
+monitoring_temp/
+*.monitor
+
+# ===============================
+# SPÉCIFIQUE MINIBOTPANEL
+# ===============================
+
+# Fichiers de lock pour éviter doublons
+*.lock
+*.pid
+
+# Rapports d'installation
 INSTALLATION_REPORT.txt
+installation_*.log
+
+# Test audio générés
+test_audio_generated/
+audio_test_output/
+
+# États de campagnes temporaires
+campaign_states/
+call_states/
+
+# ===============================
+# GARDER CES FICHIERS (patterns négatifs)
+# ===============================
+
+# Fichiers audio de base (nécessaires au système)
+!/audio/hello.wav
+!/audio/retry.wav
+!/audio/q1.wav
+!/audio/q2.wav
+!/audio/q3.wav
+!/audio/is_leads.wav
+!/audio/confirm.wav
+!/audio/bye_success.wav
+!/audio/bye_failed.wav
+!/audio/test_audio.wav
+
+# Configuration de base (template)
+!.env.example
+!config_template.py
+
+# Documentation
+!README.md
+!ARCHITECTURE.md
+!DEPLOIEMENT.md

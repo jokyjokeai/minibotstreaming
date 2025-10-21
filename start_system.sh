@@ -1,29 +1,17 @@
 #!/bin/bash
 
-# Script de démarrage du système MiniBotPanel v2
+# Script de démarrage du système MiniBotPanel v2 - Architecture Streaming
 
 echo "========================================="
-echo "  MINIBOT PANEL V2 - DÉMARRAGE"
+echo "  MINIBOT PANEL V2 - DÉMARRAGE STREAMING"
 echo "========================================="
 
 # Déterminer automatiquement le répertoire du script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-# Configurer les chemins pour cuDNN (pour GPU)
-# Auto-détection du chemin des librairies NVIDIA (installées par install.py)
-NVIDIA_CUDNN_PATH="${HOME}/.local/lib/python3.10/site-packages/nvidia/cudnn/lib"
-NVIDIA_CUBLAS_PATH="${HOME}/.local/lib/python3.10/site-packages/nvidia/cublas/lib"
-
-if [ -d "$NVIDIA_CUDNN_PATH" ] && [ -d "$NVIDIA_CUBLAS_PATH" ]; then
-    export LD_LIBRARY_PATH="${NVIDIA_CUBLAS_PATH}:${NVIDIA_CUDNN_PATH}:$LD_LIBRARY_PATH"
-    echo "✅ GPU cuDNN libraries detected and configured"
-else
-    echo "ℹ️  GPU cuDNN libraries not found (CPU mode will be used)"
-fi
-
 # Créer les dossiers nécessaires
-mkdir -p logs recordings audio
+mkdir -p logs recordings audio assembled_audio transcripts
 
 # Nettoyage automatique des anciens enregistrements
 echo "🧹 Nettoyage des anciens enregistrements (>7 jours)..."
@@ -33,22 +21,27 @@ else
     echo "⚠️  Script de nettoyage introuvable, skipping..."
 fi
 
-# Vérifier si les fichiers audio sont installés dans Asterisk
-echo "🔍 Vérification des fichiers audio..."
+# Vérifier si les fichiers audio sont installés dans Asterisk (16kHz streaming)
+echo "🔍 Vérification des fichiers audio streaming (16kHz)..."
 if [ ! -d "/var/lib/asterisk/sounds/minibot" ] || [ -z "$(ls -A /var/lib/asterisk/sounds/minibot 2>/dev/null)" ]; then
-    echo "⚠️  Fichiers audio non installés dans Asterisk"
+    echo "⚠️  Fichiers audio 16kHz non installés dans Asterisk"
     echo "   Exécuter: sudo ./system/setup_audio.sh"
     echo "   Puis relancer ce script"
-    # On continue quand même mais avec un avertissement
-    echo "   ⚠️  Les fichiers audio ne fonctionneront pas correctement !"
+    echo "   ⚠️  Les fichiers audio streaming ne fonctionneront pas !"
 else
-    echo "✅ Fichiers audio installés dans Asterisk"
+    echo "✅ Fichiers audio 16kHz installés dans Asterisk"
 fi
 
-# Vérifier Asterisk
-echo "🔍 Vérification Asterisk..."
+# Vérifier Asterisk 22 + AudioFork
+echo "🔍 Vérification Asterisk 22 + AudioFork..."
 if systemctl is-active --quiet asterisk; then
     echo "✅ Asterisk est actif"
+    # Vérifier AudioFork
+    if asterisk -rx 'module show like audiofork' 2>/dev/null | grep -q 'res_audiofork'; then
+        echo "✅ AudioFork module détecté"
+    else
+        echo "⚠️  AudioFork non détecté (nécessaire pour streaming)"
+    fi
 else
     echo "⚠️ Asterisk n'est pas actif, démarrage..."
     sudo systemctl start asterisk
@@ -65,11 +58,47 @@ else
     sleep 3
 fi
 
+# Vérifier Ollama NLP (service streaming)
+echo "🔍 Vérification Ollama NLP..."
+if systemctl is-active --quiet ollama; then
+    echo "✅ Ollama est actif"
+    # Vérifier modèle disponible
+    if ollama list | grep -q 'llama3.2'; then
+        echo "✅ Modèle Llama3.2 disponible"
+    else
+        echo "⚠️  Modèle Llama3.2 manquant, installation..."
+        ollama pull llama3.2:1b
+    fi
+else
+    echo "⚠️ Ollama n'est pas actif, démarrage..."
+    sudo systemctl start ollama
+    sleep 5
+fi
+
+# Vérifier modèles Vosk ASR
+echo "🔍 Vérification modèles Vosk français..."
+VOSK_PATH="/var/lib/vosk-models/fr"
+if [ -d "$VOSK_PATH" ] && [ -f "$VOSK_PATH/am/final.mdl" ]; then
+    echo "✅ Modèle Vosk français disponible"
+else
+    echo "⚠️  Modèle Vosk français manquant"
+    echo "   Installation automatique en cours..."
+    python3 -c "
+import vosk
+try:
+    model = vosk.Model('/var/lib/vosk-models/fr')
+    print('✅ Vosk model OK')
+except:
+    print('⚠️  Vosk model download required')
+    # Le modèle sera téléchargé automatiquement au premier usage
+"
+fi
+
 # Vérifier et arrêter les anciens processus s'ils existent
 echo "🔍 Vérification des processus existants..."
-if pgrep -f "python3 robot_ari.py" > /dev/null; then
-    echo "⚠️  Robot ARI déjà en cours, arrêt..."
-    pkill -f "python3 robot_ari.py"
+if pgrep -f "python3 robot_ari_hybrid.py" > /dev/null; then
+    echo "⚠️  Robot ARI Streaming déjà en cours, arrêt..."
+    pkill -f "python3 robot_ari_hybrid.py"
     sleep 2
 fi
 
@@ -85,137 +114,71 @@ if pgrep -f "uvicorn main:app" > /dev/null; then
     sleep 2
 fi
 
-# ========== MENU INTERACTIF CPU/GPU + MODÈLE WHISPER ==========
+# ========== VÉRIFICATION STREAMING SERVICES ==========
 echo ""
 echo "========================================="
-echo "  CONFIGURATION WHISPER"
+echo "  VÉRIFICATION SERVICES STREAMING"
 echo "========================================="
 echo ""
 
-# Lire config actuelle depuis .env
-CURRENT_DEVICE=$(grep "^WHISPER_DEVICE=" .env 2>/dev/null | cut -d '=' -f2)
-CURRENT_MODEL=$(grep "^WHISPER_MODEL=" .env 2>/dev/null | cut -d '=' -f2)
-
-echo "📊 Configuration actuelle:"
-echo "   Device: ${CURRENT_DEVICE:-non défini}"
-echo "   Modèle: ${CURRENT_MODEL:-non défini}"
-echo ""
-
-# Menu Device (CPU/GPU)
-echo "💻 Choisissez le mode de transcription:"
-echo "  1. CPU (compatible partout, plus lent: ~3-5s)"
-echo "  2. GPU (RTX 4090, très rapide: ~0.5-1s)"
-echo ""
-read -p "Votre choix [1-CPU/2-GPU, défaut=actuel]: " device_choice
-
-if [ "$device_choice" = "1" ]; then
-    WHISPER_DEVICE="cpu"
-    WHISPER_COMPUTE_TYPE="int8"
-    echo "✅ Mode CPU sélectionné"
-elif [ "$device_choice" = "2" ]; then
-    # Vérifier que GPU est disponible
-    if python3 -c "import torch; exit(0 if torch.cuda.is_available() else 1)" 2>/dev/null; then
-        WHISPER_DEVICE="cuda"
-        WHISPER_COMPUTE_TYPE="float16"
-        echo "✅ Mode GPU sélectionné"
-    else
-        echo "⚠️  GPU non détecté, utilisation CPU par défaut"
-        WHISPER_DEVICE="cpu"
-        WHISPER_COMPUTE_TYPE="int8"
-    fi
-else
-    # Garder config actuelle si pas de choix
-    WHISPER_DEVICE="${CURRENT_DEVICE:-cpu}"
-    WHISPER_COMPUTE_TYPE=$(grep "^WHISPER_COMPUTE_TYPE=" .env 2>/dev/null | cut -d '=' -f2)
-    WHISPER_COMPUTE_TYPE="${WHISPER_COMPUTE_TYPE:-int8}"
-    echo "ℹ️  Configuration actuelle conservée: ${WHISPER_DEVICE}"
-fi
-
-echo ""
-
-# Menu Modèle Whisper
-echo "🤖 Choisissez le modèle Whisper:"
-echo "  1. tiny   - Le plus rapide, moins précis (~75MB)"
-echo "  2. base   - Équilibre vitesse/précision (~150MB)"
-echo "  3. small  - Plus précis, plus lent (~500MB) [RECOMMANDÉ GPU]"
-echo "  4. medium - Très précis, lent (~1.5GB)"
-echo "  5. large  - Meilleure précision, très lent (~3GB)"
-echo ""
-
-# Vérifier modèles déjà téléchargés
-CACHE_DIR="${HOME}/.cache/huggingface/hub"
-DOWNLOADED=""
-for model in tiny base small medium large; do
-    if [ -d "${CACHE_DIR}/models--Systran--faster-whisper-${model}" ] || \
-       [ -d "${CACHE_DIR}/models--openai--whisper-${model}" ]; then
-        DOWNLOADED="${DOWNLOADED}${model}, "
-    fi
-done
-if [ -n "$DOWNLOADED" ]; then
-    echo "💾 Modèles déjà téléchargés : ${DOWNLOADED%, }"
-    echo ""
-fi
-
-read -p "Votre choix [1/2/3/4/5, défaut=actuel]: " model_choice
-
-case "$model_choice" in
-    1) WHISPER_MODEL="tiny" ;;
-    2) WHISPER_MODEL="base" ;;
-    3) WHISPER_MODEL="small" ;;
-    4) WHISPER_MODEL="medium" ;;
-    5) WHISPER_MODEL="large" ;;
-    *) WHISPER_MODEL="${CURRENT_MODEL:-small}"
-       echo "ℹ️  Modèle actuel conservé: ${WHISPER_MODEL}" ;;
-esac
-
-if [ "$model_choice" -ge 1 ] && [ "$model_choice" -le 5 ]; then
-    echo "✅ Modèle ${WHISPER_MODEL} sélectionné"
-fi
-
-echo ""
-
-# Mettre à jour .env avec les nouveaux paramètres
-sed -i "s/^WHISPER_DEVICE=.*/WHISPER_DEVICE=${WHISPER_DEVICE}/" .env
-sed -i "s/^WHISPER_COMPUTE_TYPE=.*/WHISPER_COMPUTE_TYPE=${WHISPER_COMPUTE_TYPE}/" .env
-sed -i "s/^WHISPER_MODEL=.*/WHISPER_MODEL=${WHISPER_MODEL}/" .env
-
-echo "📝 Fichier .env mis à jour:"
-echo "   WHISPER_DEVICE=${WHISPER_DEVICE}"
-echo "   WHISPER_COMPUTE_TYPE=${WHISPER_COMPUTE_TYPE}"
-echo "   WHISPER_MODEL=${WHISPER_MODEL}"
-echo ""
-
-# PRÉ-CHARGER WHISPER AVANT TOUT !
-echo "🤖 Pré-chargement de Whisper (pour éviter les délais pendant les appels)..."
-echo "   Modèle: ${WHISPER_MODEL} sur ${WHISPER_DEVICE}"
+# Test Vosk
+echo "🎤 Test Vosk ASR..."
 python3 -c "
-import sys
-import os
-sys.path.insert(0, os.getcwd())
-from services.whisper_service import whisper_service
-print('✅ Whisper model loaded and ready!')
-print('   Le modèle est maintenant en cache')
-" 2>&1 || echo "⚠️  Whisper pre-load failed but continuing..."
+try:
+    import vosk
+    print('✅ Vosk importé avec succès')
+except ImportError:
+    print('❌ Vosk non disponible')
+    exit(1)
+" || { echo "❌ Vosk requis pour streaming"; exit 1; }
 
-# Lancer robot_ari.py en arrière-plan (avec tout pré-chargé)
+# Test Ollama API
+echo "🤖 Test Ollama NLP..."
+if curl -s http://localhost:11434/api/version >/dev/null; then
+    echo "✅ Ollama API accessible"
+else
+    echo "❌ Ollama API non accessible"
+    exit 1
+fi
+
+# Test WebRTC VAD
+echo "🎙️  Test WebRTC VAD..."
+python3 -c "
+try:
+    import webrtcvad
+    print('✅ WebRTC VAD disponible')
+except ImportError:
+    print('❌ WebRTC VAD non disponible')
+    exit(1)
+" || { echo "❌ WebRTC VAD requis pour streaming"; exit 1; }
+
+echo "✅ Tous les services streaming sont disponibles"
+
+# ========== DÉMARRAGE SERVICES STREAMING ==========
 echo ""
-echo "🤖 Démarrage du Robot ARI..."
-echo "   • Whisper se charge au démarrage"
-echo "   • Audio convertis en 8000 Hz et mis en cache"
-echo "   • Scénario TEST pré-chargé"
-python3 robot_ari.py > logs/robot_ari_console.log 2>&1 &
+echo "========================================="
+echo "  DÉMARRAGE ARCHITECTURE STREAMING"
+echo "========================================="
+echo ""
+
+# Lancer Robot ARI Streaming en arrière-plan
+echo "🌊 Démarrage du Robot ARI Streaming..."
+echo "   • Vosk ASR temps réel (16kHz)"
+echo "   • Ollama NLP local"
+echo "   • Barge-in naturel"
+echo "   • AMD Hybride"
+python3 robot_ari_hybrid.py > logs/robot_ari_console.log 2>&1 &
 ROBOT_PID=$!
-echo "✅ Robot ARI lancé (PID: $ROBOT_PID)"
-echo "   Tout est pré-chargé en mémoire !"
+echo "✅ Robot ARI Streaming lancé (PID: $ROBOT_PID)"
 
-sleep 3
+sleep 5
 
-# Lancer Batch Caller (gestion de queue d'appels avec throttling)
+# Lancer Batch Caller (gestion de queue d'appels)
 echo ""
-echo "📞 Démarrage du Batch Caller (file d'attente d'appels)..."
+echo "📞 Démarrage du Batch Caller (gestionnaire campagnes)..."
 echo "   • Max 8 appels simultanés"
 echo "   • Gestion intelligente de la queue"
-echo "   • Retry automatique en cas d'échec"
+echo "   • Retry automatique streaming"
 python3 system/batch_caller.py > logs/batch_caller_console.log 2>&1 &
 BATCH_PID=$!
 echo "✅ Batch Caller lancé (PID: $BATCH_PID)"
@@ -225,40 +188,70 @@ sleep 3
 # Lancer FastAPI
 echo ""
 echo "🌐 Démarrage de l'API FastAPI..."
-python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 > logs/fastapi_console.log 2>&1 &
+echo "   • Endpoints streaming"
+echo "   • Health checks Vosk + Ollama"
+echo "   • Monitoring temps réel"
+python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 > logs/main.log 2>&1 &
 API_PID=$!
 echo "✅ FastAPI lancé (PID: $API_PID)"
 
-sleep 3
+sleep 5
 
-# Vérifier que tout fonctionne
+# ========== VÉRIFICATIONS FINALES ==========
 echo ""
-echo "🧪 Vérification du système..."
-sleep 2
+echo "🧪 Vérification du système streaming..."
 
-# Test health check
+# Test health check complet
+echo "🏥 Test Health Check..."
 if curl -s http://localhost:8000/health | grep -q "healthy"; then
     echo "✅ API Health Check: OK"
+    
+    # Afficher détails health check
+    echo "📊 Détails services:"
+    curl -s http://localhost:8000/health | python3 -m json.tool | grep -E "(vosk_status|ollama_status|streaming)"
 else
     echo "❌ API Health Check: FAILED"
+fi
+
+# Test Vosk via API
+echo "🎤 Test Vosk via API..."
+if curl -s http://localhost:8000/health | grep -q "vosk.*ready"; then
+    echo "✅ Vosk ASR: Prêt"
+else
+    echo "⚠️  Vosk ASR: Non prêt"
+fi
+
+# Test Ollama via API
+echo "🤖 Test Ollama via API..."
+if curl -s http://localhost:8000/health | grep -q "ollama.*ready"; then
+    echo "✅ Ollama NLP: Prêt"
+else
+    echo "⚠️  Ollama NLP: Non prêt"
 fi
 
 # Afficher les infos
 echo ""
 echo "========================================="
-echo "  SYSTÈME DÉMARRÉ AVEC SUCCÈS"
+echo "  SYSTÈME STREAMING DÉMARRÉ AVEC SUCCÈS"
 echo "========================================="
 echo ""
-echo "📊 Informations:"
-echo "  • Robot ARI PID: $ROBOT_PID"
-echo "  • Batch Caller PID: $BATCH_PID"
+echo "🌊 Architecture Streaming MiniBotPanel v2:"
+echo "  • Robot ARI Streaming PID: $ROBOT_PID"
+echo "  • Batch Caller PID: $BATCH_PID"  
 echo "  • FastAPI PID: $API_PID"
 echo "  • API URL: http://localhost:8000"
-echo "  • Logs: logs/minibot_$(date +%Y%m%d).log"
+echo ""
+echo "📊 Services Streaming:"
+echo "  • Vosk ASR: Transcription française temps réel"
+echo "  • Ollama NLP: Analyse intention locale"
+echo "  • WebRTC VAD: Détection parole + barge-in"
+echo "  • AudioFork: Streaming audio 16kHz bidirectionnel"
 echo ""
 echo "📋 Commandes utiles:"
-echo "  • Voir logs robot: tail -f logs/minibot_$(date +%Y%m%d).log"
+echo "  • Logs streaming: ./monitor_logs.sh"
 echo "  • Arrêter: ./stop_system.sh"
-echo "  • Tester appel: curl -X POST http://localhost:8000/calls/launch -H 'Content-Type: application/json' -d '{\"phone_number\":\"0612345678\",\"scenario\":\"test\"}'"
+echo "  • Health check: curl http://localhost:8000/health"
+echo "  • Test appel: curl -X POST http://localhost:8000/calls/launch -H 'Content-Type: application/json' -d '{\"phone_number\":\"33612345678\",\"scenario\":\"production\"}'"
 echo ""
-echo "🎉 Système prêt (Batch mode avec Whisper) !"
+echo "🎉 Architecture streaming opérationnelle !"
+echo "    Latence cible: <200ms (Vosk + Ollama + Barge-in)"

@@ -43,6 +43,15 @@ class CallInteraction(Base):
     whisper_metadata = Column(JSONB, nullable=True)
     played_at = Column(DateTime, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    # Nouvelles colonnes streaming
+    intent = Column(String(50), nullable=True)  # intent detecté (affirm, deny, etc.)
+    intent_confidence = Column(Float, nullable=True)  # confidence intent 0-1
+    asr_latency_ms = Column(Float, nullable=True)  # latence ASR en ms
+    intent_latency_ms = Column(Float, nullable=True)  # latence intent en ms
+    barge_in_detected = Column(Boolean, default=False)  # barge-in utilisé
+    processing_method = Column(String(20), nullable=True)  # "streaming" ou "classic"
+    streaming_metadata = Column(JSONB, nullable=True)  # métadonnées streaming
 
 class Campaign(Base):
     """Table campaigns - Call campaigns"""

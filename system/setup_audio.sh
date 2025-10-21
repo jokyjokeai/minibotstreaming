@@ -124,21 +124,21 @@ for wav in "$AUDIO_SOURCE"/*.wav; do
         if [ ! -f "$target" ] || [ "$wav" -nt "$target" ]; then
             echo "   📝 Traitement de $filename..."
 
-            # Toujours utiliser sox pour permettre l'amplification
-            # Même si déjà en 8000 Hz, on peut appliquer le gain
+            # Conversion 16kHz pour optimisation streaming
+            # Compatible AudioFork + Vosk + qualité supérieure
             if [ -z "$GAIN_PARAM" ]; then
-                # Pas d'amplification, juste conversion
-                sox "$wav" -r 8000 -c 1 "$target" 2>/dev/null
+                # Pas d'amplification, juste conversion 16kHz
+                sox "$wav" -r 16000 -c 1 "$target" 2>/dev/null
             else
-                # Amplification + conversion
-                sox "$wav" -r 8000 -c 1 "$target" $GAIN_PARAM 2>/dev/null
+                # Amplification + conversion 16kHz
+                sox "$wav" -r 16000 -c 1 "$target" $GAIN_PARAM 2>/dev/null
             fi
 
             if [ $? -eq 0 ]; then
                 if [ -n "$GAIN_PARAM" ]; then
-                    echo "   ✅ $filename converti (8000 Hz + $GAIN_LABEL)"
+                    echo "   ✅ $filename converti (16000 Hz + $GAIN_LABEL)"
                 else
-                    echo "   ✅ $filename converti (8000 Hz)"
+                    echo "   ✅ $filename converti (16000 Hz)"
                 fi
             else
                 echo "   ⚠️  Erreur de conversion pour $filename"
@@ -160,14 +160,13 @@ echo ""
 echo "📊 Fichiers installés :"
 ls -lh "$ASTERISK_SOUNDS"/*.wav 2>/dev/null | awk '{print "   " $9 " (" $5 ")"}'
 
-# 5. Transcription automatique avec Whisper et mise à jour audio_texts.json
+# 5. Génération basique audio_texts.json (sans transcription)
 echo ""
-echo "🎤 Transcription automatique des fichiers audio avec Whisper..."
+echo "📝 Génération de audio_texts.json..."
 python3 << EOF
 import json
 import subprocess
 import os
-import sys
 from pathlib import Path
 
 # Récupérer PROJECT_ROOT depuis la variable d'environnement passée par bash
@@ -177,89 +176,38 @@ project_root = "$PROJECT_ROOT"
 audio_dir = os.path.join(project_root, "audio")
 output_file = os.path.join(project_root, "audio_texts.json")
 
-# Importer le service Whisper
-sys.path.insert(0, project_root)
+audio_texts = {}
 
-def remove_hallucination_repetitions(text):
-    """Détecte et supprime les répétitions hallucinées par Whisper"""
-    if not text:
-        return text
+for wav_file in sorted(Path(audio_dir).glob("*.wav")):
+    filename = wav_file.stem  # Sans extension (.wav)
 
-    # Séparer en phrases (par points, virgules, etc.)
-    sentences = [s.strip() for s in text.replace('?', '.').replace('!', '.').split('.') if s.strip()]
+    print(f"   📝 Traitement de {filename}.wav...")
 
-    if len(sentences) <= 1:
-        return text
-
-    # Détecter si la même phrase est répétée plusieurs fois
-    if len(set(sentences)) == 1 and len(sentences) >= 3:
-        # Toutes les phrases sont identiques et répétées 3+ fois = hallucination
-        print(f"      ⚠️  Hallucination détectée: phrase répétée {len(sentences)} fois")
-        return sentences[0] + '.'
-
-    # Détecter si la première phrase est répétée consécutivement
-    if len(sentences) >= 2:
-        first_sentence = sentences[0]
-        repetition_count = 1
-        for sentence in sentences[1:]:
-            if sentence == first_sentence:
-                repetition_count += 1
-            else:
-                break
-
-        if repetition_count >= 3:
-            # La phrase est répétée 3+ fois consécutivement = hallucination
-            print(f"      ⚠️  Hallucination détectée: début répété {repetition_count} fois")
-            # Garder seulement la première occurrence + le reste
-            return first_sentence + '. ' + '. '.join(sentences[repetition_count:])
-
-    return text
-
-try:
-    from services.whisper_service import whisper_service
-
-    audio_texts = {}
-
-    for wav_file in sorted(Path(audio_dir).glob("*.wav")):
-        filename = wav_file.stem  # Sans extension (.wav)
-
-        print(f"   🎤 Transcription de {filename}.wav...")
-
-        # Transcription avec Whisper (français)
-        result = whisper_service.transcribe(str(wav_file), language="fr")
-        text = result.get("text", "").strip()
-
-        # Nettoyer les hallucinations de répétition (post-traitement)
-        text = remove_hallucination_repetitions(text)
-
-        # Durée du fichier avec soxi
+    # Durée du fichier avec soxi
+    try:
         duration_result = subprocess.run(
             ["soxi", "-D", str(wav_file)],
             capture_output=True,
             text=True
         )
         duration = float(duration_result.stdout.strip()) if duration_result.returncode == 0 else 0.0
+    except:
+        duration = 0.0
 
-        audio_texts[filename] = {
-            "file": f"{filename}.wav",
-            "duration": round(duration, 1),
-            "text": text
-        }
+    audio_texts[filename] = {
+        "file": f"{filename}.wav",
+        "duration": round(duration, 1),
+        "text": f"[Audio {filename} - Transcription via streaming en temps réel]"
+    }
 
-        print(f"      ✅ Texte: {text[:60]}{'...' if len(text) > 60 else ''}")
+    print(f"      ✅ Durée: {duration:.1f}s")
 
-    # Sauvegarder dans audio_texts.json
-    with open(output_file, 'w', encoding='utf-8') as f:
-        json.dump(audio_texts, f, indent=2, ensure_ascii=False)
+# Sauvegarder dans audio_texts.json
+with open(output_file, 'w', encoding='utf-8') as f:
+    json.dump(audio_texts, f, indent=2, ensure_ascii=False)
 
-    print(f"\n   ✅ audio_texts.json mis à jour avec {len(audio_texts)} fichiers")
-
-except ImportError:
-    print("   ⚠️  Whisper non disponible, transcription ignorée")
-    print("   💡 Exécutez ce script après avoir démarré le système une première fois")
-except Exception as e:
-    print(f"   ⚠️  Erreur lors de la transcription: {e}")
-    print("   💡 Continuez, vous pourrez transcrire manuellement")
+print(f"\n   ✅ audio_texts.json créé avec {len(audio_texts)} fichiers")
+print("   💡 Transcriptions seront générées en temps réel via Vosk durant les appels")
 
 EOF
 
@@ -283,9 +231,10 @@ echo "✅ Configuration terminée !"
 echo ""
 echo "ℹ️  Notes importantes :"
 echo "   • Les fichiers sont dans : $ASTERISK_SOUNDS"
+echo "   • Format optimisé : 16kHz mono WAV (streaming)"
 echo "   • Utilisables avec : sound:minibot/[nom_fichier]"
 echo "   • Réglage volume appliqué : $GAIN_LABEL"
-echo "   • audio_texts.json automatiquement généré avec transcriptions Whisper"
+echo "   • audio_texts.json généré (transcriptions temps réel via Vosk)"
 echo ""
 echo "🔄 Pour modifier le volume :"
 echo "   • Méthode rapide : sudo ./setup_audio.sh -f"

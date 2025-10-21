@@ -69,11 +69,13 @@ FILE_DESCRIPTIONS = {
 
     # Dossier services/
     "services/__init__.py": "Initialisation du package services",
-    "services/whisper_service.py": "Service de transcription audio avec Whisper (faster-whisper)",
-    "services/sentiment_service.py": "Analyse de sentiment par mots-clés (positif/négatif/interrogatif)",
     "services/call_launcher.py": "Service de lancement d'appels via ARI",
     "services/audio_assembly_service.py": "Assemblage des fichiers audio bot + client en un seul WAV",
     "services/transcript_service.py": "Génération de transcriptions complètes (JSON et TXT)",
+    "services/live_asr_vad.py": "Service ASR temps réel avec Vosk + VAD WebRTC",
+    "services/nlp_intent.py": "Moteur d'analyse d'intention local avec Ollama",
+    "services/amd_service.py": "Service AMD hybride (Asterisk + Python)",
+    "services/streaming_stats_service.py": "Statistiques streaming et analytics",
 
     # Dossier read/ (documentation)
     "read/README.md": "Documentation principale du projet",

@@ -49,9 +49,11 @@ def confirm_uninstall():
     """Demande confirmation"""
     print(f"{Colors.YELLOW}")
     print("Cette opération va supprimer:")
-    print("  • Asterisk 20 (binaires + configs)")
-    print("  • Base de données PostgreSQL 'robot_calls'")
+    print("  • Asterisk 22 + AudioFork (binaires + configs)")
+    print("  • Base de données PostgreSQL 'minibot_db'")
     print("  • Utilisateur PostgreSQL 'robot'")
+    print("  • Ollama + modèles NLP locaux")
+    print("  • Modèles Vosk français")
     print("  • Fichiers logs, recordings, audio")
     print("  • Configurations /etc/asterisk/")
     print(f"{Colors.NC}")
@@ -72,7 +74,7 @@ def uninstall_asterisk():
     run_command("killall -9 asterisk", check=False)
 
     # Désinstaller via make
-    asterisk_src = "/usr/src/asterisk-20*"
+    asterisk_src = "/usr/src/asterisk-22*"
     success, dirs = run_command(f"ls -d {asterisk_src} 2>/dev/null", check=False)
     if success and dirs.strip():
         latest_dir = dirs.strip().split('\n')[-1]
@@ -89,7 +91,9 @@ def uninstall_asterisk():
         "/var/log/asterisk",
         "/var/run/asterisk",
         "/etc/asterisk",
-        "/usr/src/asterisk-*"
+        "/usr/src/asterisk-*",
+        "/opt/minibot",
+        "/var/lib/vosk-models"
     ]
 
     for path in paths_to_remove:
@@ -111,7 +115,7 @@ def uninstall_database():
     log("🗃️  Suppression base de données...")
 
     # Supprimer base
-    run_command("sudo -u postgres dropdb robot_calls", check=False)
+    run_command("sudo -u postgres dropdb minibot_db", check=False)
 
     # Supprimer utilisateur
     run_command("sudo -u postgres dropuser robot", check=False)
@@ -129,17 +133,39 @@ def remove_python_deps():
         "alembic",
         "pydantic",
         "ari",
-        "faster-whisper",
-        "transformers",
-        "torch",
-        "torchaudio",
-        "psycopg2-binary"
+        "vosk",
+        "webrtcvad",
+        "websockets",
+        "ollama",
+        "psycopg2-binary",
+        "librosa",
+        "scipy",
+        "soundfile"
     ]
 
     for pkg in packages:
         run_command(f"pip3 uninstall -y {pkg}", check=False)
 
     log("Packages Python désinstallés", "success")
+
+def uninstall_ollama():
+    """Désinstallation Ollama"""
+    log("🤖 Désinstallation Ollama...")
+
+    # Arrêter Ollama
+    run_command("systemctl stop ollama", check=False)
+    run_command("systemctl disable ollama", check=False)
+
+    # Supprimer binaire et service
+    run_command("rm -f /usr/local/bin/ollama", check=False)
+    run_command("rm -f /etc/systemd/system/ollama.service", check=False)
+    run_command("systemctl daemon-reload")
+
+    # Supprimer modèles et données
+    run_command("rm -rf ~/.ollama", check=False)
+    run_command("rm -rf /usr/share/ollama", check=False)
+
+    log("Ollama désinstallé", "success")
 
 def remove_project_files():
     """Suppression fichiers projet"""
@@ -174,6 +200,7 @@ def main():
     try:
         uninstall_asterisk()
         uninstall_database()
+        uninstall_ollama()
         remove_python_deps()
         remove_project_files()
 
@@ -185,9 +212,11 @@ def main():
 {Colors.NC}
 
 ✅ Tous les composants ont été supprimés:
-   • Asterisk 20
-   • PostgreSQL (base robot_calls)
-   • Packages Python
+   • Asterisk 22 + AudioFork
+   • PostgreSQL (base minibot_db)
+   • Ollama + modèles NLP
+   • Modèles Vosk français
+   • Packages Python streaming
    • Fichiers projet
 
 💡 Le code source est conservé. Pour le supprimer:
