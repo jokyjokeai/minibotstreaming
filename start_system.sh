@@ -36,11 +36,17 @@ fi
 echo "🔍 Vérification Asterisk 22 + AudioFork..."
 if systemctl is-active --quiet asterisk; then
     echo "✅ Asterisk est actif"
-    # Vérifier AudioFork
-    if asterisk -rx 'module show like audiofork' 2>/dev/null | grep -q 'res_audiofork'; then
-        echo "✅ AudioFork module détecté"
+    # Vérifier modules streaming (AudioFork ou équivalents)
+    if asterisk -rx 'module show like stasis' 2>/dev/null | grep -q 'res_stasis'; then
+        echo "✅ Modules streaming (Stasis) détectés"
+        # Vérifier spécifiquement les modules pour streaming audio
+        if asterisk -rx 'module show like snoop' 2>/dev/null | grep -q 'res_stasis_snoop'; then
+            echo "✅ Module snoop audio détecté"
+        else
+            echo "⚠️  Module snoop audio non détecté"
+        fi
     else
-        echo "⚠️  AudioFork non détecté (nécessaire pour streaming)"
+        echo "⚠️  Modules streaming non détectés"
     fi
 else
     echo "⚠️ Asterisk n'est pas actif, démarrage robuste..."
@@ -119,21 +125,41 @@ fi
 
 # Vérifier modèles Vosk ASR
 echo "🔍 Vérification modèles Vosk français..."
-VOSK_PATH="/var/lib/vosk-models/fr"
-if [ -d "$VOSK_PATH" ] && [ -f "$VOSK_PATH/am/final.mdl" ]; then
+VOSK_PATH="/opt/minibot/models/vosk-fr"
+VOSK_REAL_PATH="/var/lib/vosk-models/vosk-fr-small"
+
+if [ -d "$VOSK_PATH" ] && [ -f "$VOSK_PATH/conf/model.conf" ]; then
     echo "✅ Modèle Vosk français disponible"
+elif [ -d "$VOSK_REAL_PATH" ]; then
+    echo "🔗 Recréation du lien symbolique Vosk..."
+    sudo mkdir -p /opt/minibot/models
+    sudo ln -sf "$VOSK_REAL_PATH" "$VOSK_PATH"
+    echo "✅ Lien Vosk recréé"
 else
     echo "⚠️  Modèle Vosk français manquant"
-    echo "   Installation automatique en cours..."
-    python3 -c "
-import vosk
-try:
-    model = vosk.Model('/var/lib/vosk-models/fr')
-    print('✅ Vosk model OK')
-except:
-    print('⚠️  Vosk model download required')
-    # Le modèle sera téléchargé automatiquement au premier usage
-"
+    echo "   Téléchargement automatique en cours..."
+    
+    # Télécharger le modèle s'il n'existe pas
+    sudo mkdir -p /var/lib/vosk-models
+    cd /tmp
+    wget -q -O vosk-fr-small.zip "https://alphacephei.com/vosk/models/vosk-model-fr-0.22-linto-2.2.zip" || \
+    wget -q -O vosk-fr-small.zip "https://storage.googleapis.com/linagora-ai/models/vosk-fr-small.zip"
+    
+    if [ -f "vosk-fr-small.zip" ]; then
+        sudo unzip -q vosk-fr-small.zip
+        sudo mv vosk-model-* "$VOSK_REAL_PATH" 2>/dev/null || sudo mv vosk-* "$VOSK_REAL_PATH" 2>/dev/null
+        sudo chown -R root:root "$VOSK_REAL_PATH"
+        sudo chmod -R 755 "$VOSK_REAL_PATH"
+        
+        # Créer le lien symbolique
+        sudo mkdir -p /opt/minibot/models
+        sudo ln -sf "$VOSK_REAL_PATH" "$VOSK_PATH"
+        
+        rm -f vosk-fr-small.zip
+        echo "✅ Modèle Vosk téléchargé et installé"
+    else
+        echo "❌ Échec téléchargement modèle Vosk"
+    fi
 fi
 
 # Vérifier et arrêter les anciens processus s'ils existent
