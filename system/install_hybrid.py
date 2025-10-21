@@ -268,15 +268,15 @@ class AsteriskInstaller:
         if os.path.exists(self.install_dir):
             run_cmd(f"rm -rf {self.install_dir}", "Removing previous source installation")
         
-        # Télécharger Asterisk 22.7.0 LTS stable (version exacte pour streaming/IA + fix PJSIP)
-        exact_version = "22.7.0"
+        # Télécharger Asterisk 22.6.0 LTS stable (version exacte pour streaming/IA)
+        exact_version = "22.6.0"
         run_cmd(
             f"wget -q https://github.com/asterisk/asterisk/releases/download/{exact_version}/asterisk-{exact_version}.tar.gz",
             f"Downloading Asterisk {exact_version} LTS stable release",
             timeout=300
         )
         
-        exact_version = "22.7.0"
+        exact_version = "22.6.0"
         run_cmd(
             f"tar -xzf asterisk-{exact_version}.tar.gz",
             f"Extracting Asterisk {exact_version}",
