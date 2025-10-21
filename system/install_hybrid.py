@@ -916,7 +916,7 @@ class StreamingInstaller:
             if fail2ban_config.exists():
                 run_cmd(f"cp {fail2ban_config} /etc/fail2ban/jail.local", "Install fail2ban config", check=False)
                 run_cmd("systemctl enable fail2ban", "Enable fail2ban", check=False)
-                run_cmd("systemctl restart fail2ban", "Restart fail2ban", check=False)
+                run_cmd("systemctl reload fail2ban", "Reload fail2ban configuration", check=False)
                 log("✅ fail2ban configured for SIP protection")
             
             log("✅ UFW firewall + fail2ban configured - VPS protected from SIP attacks")
@@ -1122,20 +1122,39 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
         log("🚀 Starting Asterisk service")
         
         try:
-            # CRITIQUE: Nettoyer les processus zombies/bloqués avant restart
-            log("🧹 Cleaning any existing Asterisk processes")
-            run_cmd("pkill -9 asterisk", check=False)
-            time.sleep(2)
-            run_cmd("systemctl stop asterisk", check=False)
-            time.sleep(3)
+            # OPTIMISATION: Utiliser reload au lieu de restart pour éviter les blocages
+            log("🔄 Reloading Asterisk configuration (safer than restart)")
             
-            # Recharger la configuration
-            run_cmd("systemctl start asterisk", "Starting Asterisk", timeout=120)
-            time.sleep(5)  # Attendre le démarrage
+            # CRITIQUE: Nettoyer les règles iptables qui peuvent bloquer SIP
+            log("🧹 Cleaning any blocking iptables rules for SIP")
+            run_cmd("iptables -D INPUT -p udp --dport 5060 -j DROP", check=False)
+            run_cmd("iptables -D OUTPUT -p udp --sport 5060 -j DROP", check=False)
+            run_cmd("iptables -D INPUT -p tcp --dport 5060 -j DROP", check=False)
+            run_cmd("iptables -D OUTPUT -p tcp --sport 5060 -j DROP", check=False)
+            
+            # Vérifier si Asterisk est déjà démarré
+            result = run_cmd("systemctl is-active asterisk", check=False)
+            
+            if result.returncode == 0:
+                # Asterisk est actif, utiliser reload
+                log("📡 Asterisk is running, using reload...")
+                run_cmd("asterisk -rx 'core reload'", "Reloading Asterisk configuration")
+                time.sleep(3)
+                
+                # Recharger spécifiquement PJSIP
+                run_cmd("asterisk -rx 'module reload res_pjsip.so'", "Reloading PJSIP module")
+                time.sleep(2)
+            else:
+                # Asterisk n'est pas actif, démarrer proprement
+                log("🚀 Asterisk not running, starting service...")
+                run_cmd("pkill -9 asterisk", check=False)  # Nettoyer les processus zombies
+                time.sleep(2)
+                run_cmd("systemctl start asterisk", "Starting Asterisk", timeout=60)
+                time.sleep(5)
             
             # Vérifier que c'est démarré
             run_cmd("systemctl is-active asterisk", check=True)
-            log("✅ Asterisk service started successfully")
+            log("✅ Asterisk service ready successfully")
             
         except Exception as e:
             log(f"❌ Failed to start Asterisk: {e}", "error")
