@@ -1342,12 +1342,12 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
                     log(f"💻 Command: asterisk -rx \"pjsip show registrations\"")
                     log(f"📤 Output: {result.stdout}")
                     
-                    # Chercher la registration par username (convention standard 1:1)
+                    # Chercher provider_reg (notre registration) au lieu du username
                     username = sip_config['username']
-                    if username in result.stdout:
+                    if "provider_reg" in result.stdout:
                         if "Registered" in result.stdout:
                             log("✅ SIP registration successful!", "success")
-                            log(f"📞 {username} is registered")
+                            log(f"📞 provider_reg is registered (user: {username})")
                             return True
                         elif "Unregistered" in result.stdout:
                             log(f"⚠️ Registration unregistered - attempt {attempt}", "warning")
@@ -1356,7 +1356,7 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
                         else:
                             log(f"🔄 Registration in progress - attempt {attempt}")
                     else:
-                        log(f"⚠️ No {username} registration found - attempt {attempt}")
+                        log(f"⚠️ No provider_reg registration found - attempt {attempt}")
                 else:
                     log(f"❌ Command failed - attempt {attempt}")
                 
