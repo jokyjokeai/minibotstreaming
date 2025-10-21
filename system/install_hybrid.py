@@ -1026,7 +1026,7 @@ class StreamingInstaller:
         
         # Les configs corrompues ont déjà été supprimées après "make samples"
         
-        # Configuration PJSIP (Asterisk 22) - Format compatible ancien install.py
+        # Configuration PJSIP (Asterisk 22) - EXACTEMENT comme ancien install.py fonctionnel
         pjsip_conf = f"""[global]
 type=global
 endpoint_identifier_order=ip,username
@@ -1050,23 +1050,23 @@ auth_type=userpass
 username={sip_config['username']}
 password={sip_config['password']}
 
-[{sip_config['trunk_name']}]
+[bitcall]
 type=endpoint
 transport=transport-udp
-context={sip_config['context']}
+context=outbound-robot
 outbound_auth={sip_config['username']}-auth
-aors={sip_config['trunk_name']}-aor
+aors=bitcall-aor
 allow=!all,ulaw,alaw,gsm
 from_user={sip_config['username']}
 from_domain={sip_config['host']}
 
-[{sip_config['trunk_name']}-aor]
+[bitcall-aor]
 type=aor
 contact=sip:{sip_config['host']}
 
-[{sip_config['trunk_name']}-identify]
+[bitcall-identify]
 type=identify
-endpoint={sip_config['trunk_name']}
+endpoint=bitcall
 match={sip_config['host']}
 """
         
