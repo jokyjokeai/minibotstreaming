@@ -898,6 +898,11 @@ class StreamingInstaller:
         """Génère la configuration SIP Asterisk"""
         log("📝 Generating Asterisk SIP configuration")
         
+        # CRITIQUE: Supprimer l'ancienne config qui cause les erreurs
+        log("🗑️ Removing old Asterisk configurations...")
+        run_cmd("rm -f /etc/asterisk/extensions.conf", check=False)
+        run_cmd("rm -f /etc/asterisk/pjsip.conf", check=False)
+        
         # Configuration PJSIP (Asterisk 22)
         pjsip_conf = f"""
 ; =============================================================================
