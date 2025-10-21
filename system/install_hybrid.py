@@ -1240,71 +1240,96 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
         log("✅ Asterisk SIP configuration + transmit_silence generated")
     
     def _start_asterisk_service(self):
-        """Démarre le service Asterisk"""
-        log("🚀 Starting Asterisk service")
+        """Démarre le service Asterisk avec méthode robuste"""
+        log("🚀 Starting Asterisk service with robust method")
         
         try:
-            # OPTIMISATION: Utiliser reload au lieu de restart pour éviter les blocages
-            log("🔄 Reloading Asterisk configuration (safer than restart)")
+            # 1. Arrêt propre et nettoyage
+            log("🧹 Stopping any running Asterisk processes")
+            run_cmd("systemctl stop asterisk", check=False)
+            run_cmd("pkill -f asterisk", check=False)
+            time.sleep(3)
             
-            # CRITIQUE: Bloquer temporairement SIP pour éviter les attaques pendant l'installation
-            log("🛡️ Temporarily blocking SIP port to prevent attacks during startup")
-            run_cmd("iptables -I INPUT -p udp --dport 5060 -j DROP", check=False)
+            # 2. Nettoyage des fichiers de lock
+            log("🔒 Cleaning lock files")
+            run_cmd("rm -f /var/run/asterisk/asterisk.ctl", check=False)
+            run_cmd("rm -f /var/run/asterisk/asterisk.pid", check=False)
             
-            # Nettoyer les anciennes règles bloquantes
-            log("🧹 Cleaning any old blocking iptables rules for SIP")
-            run_cmd("iptables -D OUTPUT -p udp --sport 5060 -j DROP", check=False)
-            run_cmd("iptables -D INPUT -p tcp --dport 5060 -j DROP", check=False)
-            run_cmd("iptables -D OUTPUT -p tcp --sport 5060 -j DROP", check=False)
+            # 3. Fixer permissions des configurations
+            log("📋 Fixing configuration permissions")
+            config_files = ["/etc/asterisk/pjsip.conf", "/etc/asterisk/asterisk.conf", 
+                          "/etc/asterisk/ari.conf", "/etc/asterisk/http.conf"]
+            for config_file in config_files:
+                run_cmd(f"chown asterisk:asterisk {config_file}", check=False)
+                run_cmd(f"chmod 644 {config_file}", check=False)
             
-            # Vérifier si Asterisk est déjà démarré
-            result = run_cmd("systemctl is-active asterisk", check=False)
+            # 4. Créer et fixer permissions répertoires
+            log("📁 Creating and fixing Asterisk directories")
+            dirs = ["/var/run/asterisk", "/var/lib/asterisk", "/var/log/asterisk", 
+                   "/var/spool/asterisk", "/var/spool/asterisk/recording"]
+            for dir_path in dirs:
+                run_cmd(f"mkdir -p {dir_path}", check=False)
+                run_cmd(f"chown -R asterisk:asterisk {dir_path}", check=False)
+                run_cmd(f"chmod 755 {dir_path}", check=False)
             
-            if result.returncode == 0:
-                # Asterisk est actif, utiliser reload
-                log("📡 Asterisk is running, using reload...")
-                run_cmd("asterisk -rx 'core reload'", "Reloading Asterisk configuration")
-                time.sleep(3)
+            # 5. Démarrage systemctl avec retry
+            log("🎯 Starting Asterisk via systemctl with retry logic")
+            max_attempts = 3
+            for attempt in range(max_attempts):
+                log(f"   Attempt {attempt + 1}/{max_attempts}")
                 
-                # Recharger spécifiquement PJSIP
-                run_cmd("asterisk -rx 'module reload res_pjsip.so'", "Reloading PJSIP module")
-                time.sleep(2)
-            else:
-                # Asterisk n'est pas actif, démarrer proprement SANS systemctl (évite blocages)
-                log("🚀 Asterisk not running, starting directly (bypassing systemctl)")
-                
-                # Nettoyer processus zombies
-                run_cmd("pkill -9 asterisk", check=False)
-                time.sleep(2)
-                
-                # Créer et fixer permissions répertoires Asterisk
-                log("📁 Creating and fixing Asterisk directories permissions")
-                dirs = ["/var/run/asterisk", "/var/lib/asterisk", "/var/log/asterisk", "/var/spool/asterisk"]
-                for dir_path in dirs:
-                    run_cmd(f"mkdir -p {dir_path}", check=False)
-                    run_cmd(f"chown asterisk:asterisk {dir_path}", check=False)
-                
-                # Démarrer Asterisk directement (contourne problèmes systemd)
-                log("🎯 Starting Asterisk directly as asterisk user")
-                run_cmd("cd /var/lib/asterisk && sudo -u asterisk /usr/sbin/asterisk -C /etc/asterisk/asterisk.conf", 
-                       "Starting Asterisk directly", timeout=30)
+                # Démarrer le service
+                result = run_cmd("systemctl start asterisk", check=False)
                 time.sleep(5)
+                
+                # Vérifier si c'est actif
+                status_result = run_cmd("systemctl is-active asterisk", check=False)
+                if status_result.returncode == 0:
+                    log("✅ Asterisk started successfully via systemctl")
+                    break
+                    
+                if attempt < max_attempts - 1:
+                    log(f"⚠️ Attempt {attempt + 1} failed, retrying...")
+                    run_cmd("systemctl stop asterisk", check=False)
+                    run_cmd("pkill -f asterisk", check=False)
+                    time.sleep(2)
+                else:
+                    log("❌ All systemctl attempts failed, trying direct start", "warning")
+                    
+                    # Fallback: démarrage direct
+                    run_cmd("cd /var/lib/asterisk && sudo -u asterisk /usr/sbin/asterisk -C /etc/asterisk/asterisk.conf", 
+                           "Direct Asterisk start", timeout=30, check=False)
+                    time.sleep(5)
             
-            # Vérifier que c'est démarré (processus + CLI)
-            log("🔍 Verifying Asterisk is running")
-            result = run_cmd("ps aux | grep '[a]sterisk.*asterisk.conf'", check=False)
-            if result.returncode == 0:
-                log("✅ Asterisk process confirmed running")
-                # Test CLI pour s'assurer qu'il répond
-                run_cmd("asterisk -rx 'core show uptime'", "Testing Asterisk CLI", check=False)
+            # 6. Vérification finale
+            log("🔍 Final verification of Asterisk status")
+            
+            # Test processus
+            process_result = run_cmd("ps aux | grep '[a]sterisk.*asterisk.conf'", check=False)
+            
+            # Test CLI
+            cli_result = run_cmd("asterisk -rx 'core show uptime'", check=False)
+            
+            # Test systemctl
+            systemctl_result = run_cmd("systemctl is-active asterisk", check=False)
+            
+            if process_result.returncode == 0 and cli_result.returncode == 0:
+                log("✅ Asterisk is running and responding to CLI")
+                if systemctl_result.returncode == 0:
+                    log("✅ Asterisk service is properly managed by systemctl")
+                else:
+                    log("⚠️ Asterisk running but not managed by systemctl (manual start)")
+                return True
             else:
-                log("❌ Asterisk process not found", "error")
+                log("❌ Asterisk failed to start properly", "error")
+                return False
             
             # CRITIQUE: Débloquer le port SIP maintenant qu'Asterisk est démarré
             log("🔓 Unblocking SIP port - Asterisk is now running safely")
             run_cmd("iptables -D INPUT -p udp --dport 5060 -j DROP", check=False)
             
             log("✅ Asterisk service ready successfully")
+            return True
             
         except Exception as e:
             log(f"❌ Failed to start Asterisk: {e}", "error")

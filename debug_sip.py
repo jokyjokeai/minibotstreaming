@@ -17,45 +17,59 @@ def connect_and_debug():
         ssh.connect(
             hostname='188.34.143.144',
             username='root',
-            password='Minibot2024!'
+            password='Minibot2024!',
+            timeout=30
         )
         
         print("✅ Connecté au VPS")
         
-        # Vérifier les logs Asterisk
-        print("\n📋 Vérification logs Asterisk...")
-        stdin, stdout, stderr = ssh.exec_command('tail -20 /var/log/asterisk/messages')
-        logs = stdout.read().decode()
-        print("Logs Asterisk:")
-        print(logs)
+        # DIAGNOSTIC ET CORRECTION ASTERISK
+        print("\n🔧 Diagnostic Asterisk...")
         
-        # Vérifier la config PJSIP
-        print("\n📋 Vérification config PJSIP...")
-        stdin, stdout, stderr = ssh.exec_command('asterisk -rx "pjsip show endpoints"')
-        endpoints = stdout.read().decode()
-        print("Endpoints PJSIP:")
-        print(endpoints)
+        # 1. Vérifier le statut du service
+        print("1️⃣ Statut service Asterisk...")
+        stdin, stdout, stderr = ssh.exec_command('systemctl status asterisk.service')
+        status = stdout.read().decode()
+        print("Status Asterisk:")
+        print(status[-800:])
         
-        # Vérifier les registrations
-        print("\n📋 Statut registrations...")
-        stdin, stdout, stderr = ssh.exec_command('asterisk -rx "pjsip show registrations"')
-        registrations = stdout.read().decode()
-        print("Registrations:")
-        print(registrations)
+        # 2. Vérifier les logs d'erreur
+        print("\n2️⃣ Logs d'erreur Asterisk...")
+        stdin, stdout, stderr = ssh.exec_command('journalctl -xeu asterisk.service --no-pager -n 20')
+        journal_logs = stdout.read().decode()
+        print("Journal logs:")
+        print(journal_logs[-1000:])
         
-        # Vérifier auth
-        print("\n📋 Auth outbounds...")
-        stdin, stdout, stderr = ssh.exec_command('asterisk -rx "pjsip show auths"')
-        auths = stdout.read().decode()
-        print("Auths:")
-        print(auths)
+        # 3. Tester la configuration
+        print("\n3️⃣ Test configuration Asterisk...")
+        stdin, stdout, stderr = ssh.exec_command('asterisk -T')
+        test_config = stdout.read().decode()
+        error_config = stderr.read().decode()
+        print("Test config stdout:")
+        print(test_config)
+        print("Test config stderr:")
+        print(error_config)
         
-        # Vérifier le fichier de config
-        print("\n📋 Contenu pjsip.conf...")
-        stdin, stdout, stderr = ssh.exec_command('cat /etc/asterisk/pjsip.conf')
-        pjsip_conf = stdout.read().decode()
-        print("pjsip.conf:")
-        print(pjsip_conf[-1000:])  # Derniers 1000 caractères
+        # 4. Vérifier les permissions
+        print("\n4️⃣ Permissions fichiers config...")
+        stdin, stdout, stderr = ssh.exec_command('ls -la /etc/asterisk/ | head -10')
+        permissions = stdout.read().decode()
+        print("Permissions /etc/asterisk/:")
+        print(permissions)
+        
+        # 5. Tenter de démarrer Asterisk manuellement
+        print("\n5️⃣ Tentative démarrage manuel...")
+        stdin, stdout, stderr = ssh.exec_command('systemctl stop asterisk; sleep 2; systemctl start asterisk; sleep 3; systemctl status asterisk')
+        manual_start = stdout.read().decode()
+        print("Résultat démarrage manuel:")
+        print(manual_start[-800:])
+        
+        # 6. Si Asterisk démarre, vérifier PJSIP
+        print("\n6️⃣ Vérification PJSIP si Asterisk actif...")
+        stdin, stdout, stderr = ssh.exec_command('asterisk -rx "pjsip show registrations" 2>/dev/null || echo "Asterisk non accessible"')
+        pjsip_status = stdout.read().decode()
+        print("Statut PJSIP:")
+        print(pjsip_status)
         
         ssh.close()
         
