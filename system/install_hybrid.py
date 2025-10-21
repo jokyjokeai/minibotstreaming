@@ -691,8 +691,11 @@ bindport=8088
         log("✅ Asterisk configurations installed")
     
     def _generate_pjsip_config(self, sip_config: dict):
-        """Génère la configuration PJSIP avec les vraies informations SIP (comme ancien install.py)"""
+        """Génère la configuration PJSIP corrigée basée sur le working install.py et les tests VPS"""
         log(f"📞 Generating PJSIP config for {sip_config['username']}@{sip_config['server']}")
+        
+        # Utiliser gateway.bitcall.io si le serveur est l'IP directe
+        server_uri = "gateway.bitcall.io" if sip_config['server'] == "188.34.143.144" else sip_config['server']
         
         pjsip_conf = f"""[global]
 type=global
@@ -703,37 +706,41 @@ type=transport
 protocol=udp
 bind=0.0.0.0:5060
 
-[{sip_config['username']}]
+[bitcall-reg]
 type=registration
 transport=transport-udp
 outbound_auth={sip_config['username']}-auth
-server_uri=sip:{sip_config['server']}
-client_uri=sip:{sip_config['username']}@{sip_config['server']}
+server_uri=sip:{server_uri}
+client_uri=sip:{sip_config['username']}@{server_uri}
 retry_interval=60
+expiration=3600
+line=yes
+endpoint=bitcall
 
 [{sip_config['username']}-auth]
 type=auth
 auth_type=userpass
 username={sip_config['username']}
 password={sip_config['password']}
+realm={sip_config['server']}
 
-[provider-endpoint]
+[bitcall]
 type=endpoint
 transport=transport-udp
 context=outbound-robot
 outbound_auth={sip_config['username']}-auth
-aors=provider-aor
+aors=bitcall-aor
 allow=!all,ulaw,alaw,gsm
 from_user={sip_config['username']}
-from_domain={sip_config['server']}
+from_domain={server_uri}
 
-[provider-aor]
+[bitcall-aor]
 type=aor
-contact=sip:{sip_config['server']}
+contact=sip:{sip_config['username']}@{server_uri}
 
-[provider-identify]
+[bitcall-identify]
 type=identify
-endpoint=provider-endpoint
+endpoint=bitcall
 match={sip_config['server']}
 """
         
@@ -1210,8 +1217,18 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
             raise
     
     def _verify_sip_registration(self, sip_config):
-        """Vérifie l'enregistrement SIP"""
+        """Vérifie l'enregistrement SIP avec bitcall-reg"""
         log("🔍 Verifying SIP registration")
+        
+        # Recharger la config PJSIP
+        log("🔄 Reloading PJSIP configuration...")
+        run_cmd('asterisk -rx "module reload res_pjsip.so"', check=False)
+        time.sleep(2)
+        
+        # Forcer une nouvelle registration
+        log("📞 Forcing new registration...")
+        run_cmd('asterisk -rx "pjsip send register bitcall-reg"', check=False)
+        time.sleep(3)
         
         max_attempts = 6
         for attempt in range(1, max_attempts + 1):
@@ -1225,18 +1242,26 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
                     timeout=10
                 )
                 
-                if result.returncode == 0 and sip_config['trunk_name'] in result.stdout:
-                    # Chercher le statut
-                    if "Registered" in result.stdout:
-                        log("✅ SIP registration successful!", "success")
-                        log(f"📞 Trunk '{sip_config['trunk_name']}' is registered")
-                        return True
-                    elif "Unregistered" in result.stdout:
-                        log(f"⚠️ Registration failed - attempt {attempt}", "warning")
+                if result.returncode == 0:
+                    log(f"💻 Command: asterisk -rx \"pjsip show registrations\"")
+                    log(f"📤 Output: {result.stdout}")
+                    
+                    # Chercher bitcall-reg
+                    if "bitcall-reg" in result.stdout:
+                        if "Registered" in result.stdout:
+                            log("✅ SIP registration successful!", "success")
+                            log(f"📞 bitcall-reg is registered")
+                            return True
+                        elif "Unregistered" in result.stdout:
+                            log(f"⚠️ Registration unregistered - attempt {attempt}", "warning")
+                        elif "Rejected" in result.stdout:
+                            log(f"❌ Registration rejected - check credentials - attempt {attempt}", "warning")
+                        else:
+                            log(f"🔄 Registration in progress - attempt {attempt}")
                     else:
-                        log(f"🔄 Registration in progress - attempt {attempt}")
+                        log(f"⚠️ No bitcall-reg found - attempt {attempt}")
                 else:
-                    log(f"⚠️ No registration info found - attempt {attempt}")
+                    log(f"❌ Command failed - attempt {attempt}")
                 
                 if attempt < max_attempts:
                     log("⏱️ Waiting 10 seconds before retry...")
@@ -1249,10 +1274,12 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
         
         # Si on arrive ici, l'enregistrement a échoué
         log("❌ SIP registration failed after all attempts", "error")
-        log("🔧 Please check:")
-        log("  - SIP credentials are correct")
-        log("  - Firewall allows SIP traffic (UDP 5060)")
-        log("  - Network connectivity to SIP provider")
+        log("🔧 Please check:", "warning")
+        log("   - SIP credentials in /etc/asterisk/pjsip.conf", "warning")
+        log("   - Network connectivity to SIP provider", "warning")
+        log("   - Provider allows your IP address", "warning")
+        log("   - Manual test: asterisk -rx 'pjsip send register bitcall-reg'", "warning")
+        return False
         log("  - Asterisk logs: sudo tail -f /var/log/asterisk/messages")
         
         # Afficher les détails pour debug
