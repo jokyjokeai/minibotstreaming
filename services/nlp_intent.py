@@ -13,7 +13,7 @@ from datetime import datetime
 
 # Import des configurations et services existants
 import config
-from logger_config import get_logger
+from logger_config import get_logger, log_function_call, log_performance_summary, log_exception, log_memory_usage
 
 logger = get_logger(__name__)
 
@@ -35,15 +35,20 @@ class IntentEngine:
     Support Ollama local + fallback sur analyse sentiment existante
     """
 
+    @log_function_call(include_args=False, log_performance=True)
+    @log_memory_usage
     def __init__(self):
         self.logger = get_logger(f"{__name__}.IntentEngine")
+        self.logger.info("🧠 Initializing NLP Intent Engine with hybrid prompts")
         self.is_available = OLLAMA_AVAILABLE
         self.ollama_client = None
         
         # Chargement du contexte de campagne
+        self.logger.debug("📖 Loading campaign context from scenarios")
         self.campaign_context = self._load_campaign_context()
         
         # Chargement des prompts dynamiques
+        self.logger.debug("🎯 Loading dynamic prompts configuration")
         self.dynamic_prompts = self._load_dynamic_prompts()
         
         # Statistiques
@@ -54,6 +59,8 @@ class IntentEngine:
             "avg_latency_ms": 0.0,
             "model_loaded": False
         }
+        
+        self.logger.info("✅ NLP Intent Engine initialized successfully")
         
         # Mapping des intents vers les statuts MiniBotPanel
         self.intent_to_status = {
