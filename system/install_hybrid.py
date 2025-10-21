@@ -215,7 +215,8 @@ class AsteriskInstaller:
                 "git", "wget", "curl", "sox", "pkg-config", "autoconf", "automake",
                 "libtool", "libncurses5-dev", "libreadline-dev", "libspeex-dev",
                 "libspeexdsp-dev", "libgsm1-dev", "libogg-dev", "libvorbis-dev",
-                "libasound2-dev", "portaudio19-dev", "libfftw3-dev", "libresample1-dev"
+                "libasound2-dev", "portaudio19-dev", "libfftw3-dev", "libresample1-dev",
+                "libsystemd-dev"  # CRITIQUE: Support systemd pour éviter timeout au démarrage
             ]
             
             run_cmd("apt-get update", "Updating package lists")
@@ -244,6 +245,17 @@ class AsteriskInstaller:
     def configure_asterisk(self):
         """Configure Asterisk avant compilation"""
         log("⚙️ Configuring Asterisk build")
+        
+        # Vérifier si recompilation nécessaire pour support systemd
+        if os.path.exists("/usr/sbin/asterisk"):
+            log("🔍 Checking if existing Asterisk has systemd support")
+            result = run_cmd("ldd /usr/sbin/asterisk | grep systemd", check=False)
+            if result.returncode != 0:
+                log("⚠️ Existing Asterisk lacks systemd support - recompilation required")
+                log("🧹 Cleaning previous build for systemd support")
+                run_cmd("make distclean", check=False)
+            else:
+                log("✅ Existing Asterisk has systemd support")
         
         # Configuration de base avec pjproject bundled
         run_cmd(
