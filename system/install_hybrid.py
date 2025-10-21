@@ -408,16 +408,16 @@ class StreamingServicesInstaller:
         models_dir.mkdir(parents=True, exist_ok=True)
         
         # Modèle français small (140MB) - rapide
-        fr_small_url = "https://alphacephei.com/vosk/models/vosk-model-fr-0.22-small.zip"
+        fr_small_url = "https://alphacephei.com/vosk/models/vosk-model-fr-0.6-linto.zip"
         fr_small_path = models_dir / "vosk-fr-small"
         
         if not fr_small_path.exists():
             log("📥 Downloading French Vosk model (small)")
             
-            run_cmd(f"wget -O /tmp/vosk-fr-small.zip {fr_small_url}", timeout=600)
-            run_cmd("cd /tmp && unzip -q vosk-fr-small.zip")
+            run_cmd(f"wget -O /tmp/vosk-fr-linto.zip {fr_small_url}", timeout=600)
+            run_cmd("cd /tmp && unzip -q vosk-fr-linto.zip")
             run_cmd(f"mv /tmp/vosk-model-fr-* {fr_small_path}")
-            run_cmd("rm -f /tmp/vosk-fr-small.zip")
+            run_cmd("rm -f /tmp/vosk-fr-linto.zip")
             
             log("✅ French Vosk model installed")
         else:
