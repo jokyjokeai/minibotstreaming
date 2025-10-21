@@ -1168,15 +1168,35 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
                 run_cmd("asterisk -rx 'module reload res_pjsip.so'", "Reloading PJSIP module")
                 time.sleep(2)
             else:
-                # Asterisk n'est pas actif, démarrer proprement
-                log("🚀 Asterisk not running, starting service...")
-                run_cmd("pkill -9 asterisk", check=False)  # Nettoyer les processus zombies
+                # Asterisk n'est pas actif, démarrer proprement SANS systemctl (évite blocages)
+                log("🚀 Asterisk not running, starting directly (bypassing systemctl)")
+                
+                # Nettoyer processus zombies
+                run_cmd("pkill -9 asterisk", check=False)
                 time.sleep(2)
-                run_cmd("systemctl start asterisk", "Starting Asterisk", timeout=60)
+                
+                # Créer et fixer permissions répertoires Asterisk
+                log("📁 Creating and fixing Asterisk directories permissions")
+                dirs = ["/var/run/asterisk", "/var/lib/asterisk", "/var/log/asterisk", "/var/spool/asterisk"]
+                for dir_path in dirs:
+                    run_cmd(f"mkdir -p {dir_path}", check=False)
+                    run_cmd(f"chown asterisk:asterisk {dir_path}", check=False)
+                
+                # Démarrer Asterisk directement (contourne problèmes systemd)
+                log("🎯 Starting Asterisk directly as asterisk user")
+                run_cmd("cd /var/lib/asterisk && sudo -u asterisk /usr/sbin/asterisk -C /etc/asterisk/asterisk.conf", 
+                       "Starting Asterisk directly", timeout=30)
                 time.sleep(5)
             
-            # Vérifier que c'est démarré
-            run_cmd("systemctl is-active asterisk", check=True)
+            # Vérifier que c'est démarré (processus + CLI)
+            log("🔍 Verifying Asterisk is running")
+            result = run_cmd("ps aux | grep '[a]sterisk.*asterisk.conf'", check=False)
+            if result.returncode == 0:
+                log("✅ Asterisk process confirmed running")
+                # Test CLI pour s'assurer qu'il répond
+                run_cmd("asterisk -rx 'core show uptime'", "Testing Asterisk CLI", check=False)
+            else:
+                log("❌ Asterisk process not found", "error")
             
             # CRITIQUE: Débloquer le port SIP maintenant qu'Asterisk est démarré
             log("🔓 Unblocking SIP port - Asterisk is now running safely")
