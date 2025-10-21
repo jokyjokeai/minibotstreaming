@@ -708,11 +708,8 @@ bindport=8088
         log("✅ Asterisk configurations installed")
     
     def _generate_pjsip_config(self, sip_config: dict):
-        """Génère la configuration PJSIP corrigée basée sur le working install.py et les tests VPS"""
+        """Génère la configuration PJSIP simple qui fonctionne (basée sur config VPS validée)"""
         log(f"📞 Generating PJSIP config for {sip_config['username']}@{sip_config['server']}")
-        
-        # Utiliser gateway.bitcall.io si le serveur est l'IP directe
-        server_uri = "gateway.bitcall.io" if sip_config['server'] == "188.34.143.144" else sip_config['server']
         
         pjsip_conf = f"""[global]
 type=global
@@ -723,23 +720,19 @@ type=transport
 protocol=udp
 bind=0.0.0.0:5060
 
-[bitcall-reg]
+[{sip_config['username']}]
 type=registration
 transport=transport-udp
 outbound_auth={sip_config['username']}-auth
-server_uri=sip:{server_uri}
-client_uri=sip:{sip_config['username']}@{server_uri}
+server_uri=sip:{sip_config['server']}
+client_uri=sip:{sip_config['username']}@{sip_config['server']}
 retry_interval=60
-expiration=3600
-line=yes
-endpoint=bitcall
 
 [{sip_config['username']}-auth]
 type=auth
 auth_type=userpass
 username={sip_config['username']}
 password={sip_config['password']}
-realm={sip_config['server']}
 
 [bitcall]
 type=endpoint
@@ -749,11 +742,11 @@ outbound_auth={sip_config['username']}-auth
 aors=bitcall-aor
 allow=!all,ulaw,alaw,gsm
 from_user={sip_config['username']}
-from_domain={server_uri}
+from_domain={sip_config['server']}
 
 [bitcall-aor]
 type=aor
-contact=sip:{sip_config['username']}@{server_uri}
+contact=sip:{sip_config['server']}
 
 [bitcall-identify]
 type=identify
@@ -1244,7 +1237,7 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
         
         # Forcer une nouvelle registration
         log("📞 Forcing new registration...")
-        run_cmd('asterisk -rx "pjsip send register bitcall-reg"', check=False)
+        run_cmd(f'asterisk -rx "pjsip send register {sip_config["username"]}"', check=False)
         time.sleep(3)
         
         max_attempts = 6
@@ -1263,11 +1256,11 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
                     log(f"💻 Command: asterisk -rx \"pjsip show registrations\"")
                     log(f"📤 Output: {result.stdout}")
                     
-                    # Chercher bitcall-reg
-                    if "bitcall-reg" in result.stdout:
+                    # Chercher la registration par username
+                    if sip_config["username"] in result.stdout:
                         if "Registered" in result.stdout:
                             log("✅ SIP registration successful!", "success")
-                            log(f"📞 bitcall-reg is registered")
+                            log(f"📞 {sip_config['username']} is registered")
                             return True
                         elif "Unregistered" in result.stdout:
                             log(f"⚠️ Registration unregistered - attempt {attempt}", "warning")
@@ -1276,7 +1269,7 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
                         else:
                             log(f"🔄 Registration in progress - attempt {attempt}")
                     else:
-                        log(f"⚠️ No bitcall-reg found - attempt {attempt}")
+                        log(f"⚠️ No {sip_config['username']} registration found - attempt {attempt}")
                 else:
                     log(f"❌ Command failed - attempt {attempt}")
                 
@@ -1295,7 +1288,7 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
         log("   - SIP credentials in /etc/asterisk/pjsip.conf", "warning")
         log("   - Network connectivity to SIP provider", "warning")
         log("   - Provider allows your IP address", "warning")
-        log("   - Manual test: asterisk -rx 'pjsip send register bitcall-reg'", "warning")
+        log(f"   - Manual test: asterisk -rx 'pjsip send register {sip_config['username']}'", "warning")
         return False
         log("  - Asterisk logs: sudo tail -f /var/log/asterisk/messages")
         
