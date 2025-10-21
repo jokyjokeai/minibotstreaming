@@ -706,10 +706,11 @@ bindport=8088
         log("✅ Asterisk configurations installed")
     
     def _generate_pjsip_config(self, sip_config: dict):
-        """Génère la configuration PJSIP corrigée pour streaming/IA (basée sur recherche web)"""
+        """Génère la configuration PJSIP standard qui fonctionne (basée sur recherche web officielle)"""
         log(f"📞 Generating PJSIP config for {sip_config['username']}@{sip_config['server']}")
         
-        trunk_name = f"{sip_config['username']}-trunk"
+        # Convention standard : section name = CLI command name (1:1 mapping)
+        username = sip_config['username']
         
         pjsip_conf = f"""[global]
 type=global
@@ -720,39 +721,39 @@ type=transport
 protocol=udp
 bind=0.0.0.0:5060
 
-[{trunk_name}]
+[{username}]
 type=registration
 transport=transport-udp
-outbound_auth={trunk_name}-auth
+outbound_auth={username}-auth
 server_uri=sip:{sip_config['server']}
-client_uri=sip:{sip_config['username']}@{sip_config['server']}
+client_uri=sip:{username}@{sip_config['server']}
 retry_interval=60
 
-[{trunk_name}-auth]
+[{username}-auth]
 type=auth
 auth_type=userpass
-username={sip_config['username']}
+username={username}
 password={sip_config['password']}
 
-[{trunk_name}-aor]
+[{username}-aor]
 type=aor
 max_contacts=2
 remove_existing=yes
 contact=sip:{sip_config['server']}
 
-[{trunk_name}-endpoint]
+[{username}-endpoint]
 type=endpoint
 transport=transport-udp
 context=outbound-robot
-outbound_auth={trunk_name}-auth
-aors={trunk_name}-aor
+outbound_auth={username}-auth
+aors={username}-aor
 allow=!all,ulaw,alaw,gsm
-from_user={sip_config['username']}
+from_user={username}
 from_domain={sip_config['server']}
 
-[{trunk_name}-identify]
+[{username}-identify]
 type=identify
-endpoint={trunk_name}-endpoint
+endpoint={username}-endpoint
 match={sip_config['server']}
 """
         
@@ -1272,10 +1273,10 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
         run_cmd('asterisk -rx "module reload res_pjsip.so"', check=False)
         time.sleep(2)
         
-        # Forcer une nouvelle registration avec nom de trunk correct
-        trunk_name = f"{sip_config['username']}-trunk"
+        # Forcer une nouvelle registration avec convention standard
+        username = sip_config['username']
         log("📞 Forcing new registration...")
-        run_cmd(f'asterisk -rx "pjsip send register {trunk_name}"', check=False)
+        run_cmd(f'asterisk -rx "pjsip send register {username}"', check=False)
         time.sleep(3)
         
         max_attempts = 6
@@ -1294,12 +1295,12 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
                     log(f"💻 Command: asterisk -rx \"pjsip show registrations\"")
                     log(f"📤 Output: {result.stdout}")
                     
-                    # Chercher la registration par trunk name
-                    trunk_name = f"{sip_config['username']}-trunk"
-                    if trunk_name in result.stdout:
+                    # Chercher la registration par username (convention standard 1:1)
+                    username = sip_config['username']
+                    if username in result.stdout:
                         if "Registered" in result.stdout:
                             log("✅ SIP registration successful!", "success")
-                            log(f"📞 {trunk_name} is registered")
+                            log(f"📞 {username} is registered")
                             return True
                         elif "Unregistered" in result.stdout:
                             log(f"⚠️ Registration unregistered - attempt {attempt}", "warning")
@@ -1308,7 +1309,7 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
                         else:
                             log(f"🔄 Registration in progress - attempt {attempt}")
                     else:
-                        log(f"⚠️ No {trunk_name} registration found - attempt {attempt}")
+                        log(f"⚠️ No {username} registration found - attempt {attempt}")
                 else:
                     log(f"❌ Command failed - attempt {attempt}")
                 
@@ -1327,8 +1328,8 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
         log("   - SIP credentials in /etc/asterisk/pjsip.conf", "warning")
         log("   - Network connectivity to SIP provider", "warning")
         log("   - Provider allows your IP address", "warning")
-        trunk_name = f"{sip_config['username']}-trunk"
-        log(f"   - Manual test: asterisk -rx 'pjsip send register {trunk_name}'", "warning")
+        username = sip_config['username']
+        log(f"   - Manual test: asterisk -rx 'pjsip send register {username}'", "warning")
         return False
         log("  - Asterisk logs: sudo tail -f /var/log/asterisk/messages")
         
