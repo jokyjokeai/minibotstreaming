@@ -962,7 +962,7 @@ exten => s,1,NoOp(Call ended)
         
         try:
             # Recharger la configuration
-            run_cmd("systemctl restart asterisk", "Restarting Asterisk", timeout=30)
+            run_cmd("systemctl restart asterisk", "Restarting Asterisk", timeout=120)
             time.sleep(5)  # Attendre le démarrage
             
             # Vérifier que c'est démarré

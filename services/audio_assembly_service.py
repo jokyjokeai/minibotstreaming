@@ -125,7 +125,7 @@ class AudioAssemblyService:
 
             logger.info(f"🔧 Running: sox {len(audio_files)} files -> {output_file}")
             logger.info(f"   (Client audio amplified +12dB + 0.4s natural pauses between segments)")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=120)
 
             if result.returncode == 0:
                 file_size = os.path.getsize(output_file) / 1024  # KB
