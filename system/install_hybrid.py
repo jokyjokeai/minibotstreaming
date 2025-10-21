@@ -352,7 +352,7 @@ class AsteriskInstaller:
             run_cmd(f"mkdir -p {dir_path}", check=False)
             run_cmd(f"chown asterisk:asterisk {dir_path}", check=False)
         
-        # Service systemd
+        # Service systemd avec timeouts VPS
         systemd_content = """[Unit]
 Description=Asterisk PBX
 Documentation=man:asterisk(8)
@@ -372,6 +372,9 @@ ExecReload=/usr/sbin/asterisk -rx 'core reload'
 PrivateTmp=true
 Restart=always
 RestartSec=4
+# VPS timeout optimizations
+TimeoutStartSec=300
+TimeoutStopSec=120
 
 [Install]
 WantedBy=multi-user.target
@@ -790,20 +793,30 @@ class StreamingInstaller:
             raise Exception("Internet connection required")
     
     def _install_system_packages(self):
-        """Installe les packages système de base"""
-        log("📦 Installing base system packages")
+        """Installe les packages système de base + UFW firewall"""
+        log("📦 Installing base system packages + firewall")
         
         if self.system_info.os_name in ['ubuntu', 'debian']:
             base_packages = [
                 "python3", "python3-pip", "python3-venv", "python3-dev",
                 "build-essential", "git", "wget", "curl", "unzip",
-                "portaudio19-dev", "libasound2-dev", "ffmpeg", "sox"
+                "portaudio19-dev", "libasound2-dev", "ffmpeg", "sox", "ufw"
             ]
             
             run_cmd("apt-get update")
             run_cmd(f"apt-get install -y {' '.join(base_packages)}")
+            
+            # Configuration firewall UFW (comme ancien script)
+            log("🛡️ Configuring UFW firewall for VPS security")
+            run_cmd("ufw allow 22/tcp", "Allow SSH", check=False)
+            run_cmd("ufw allow 5060/udp", "Allow SIP", check=False) 
+            run_cmd("ufw allow 10000:20000/udp", "Allow RTP", check=False)
+            run_cmd("ufw allow 8088/tcp", "Allow ARI", check=False)
+            run_cmd("ufw allow 8000/tcp", "Allow FastAPI", check=False)
+            run_cmd("ufw --force enable", "Enable firewall", check=False)
+            log("✅ UFW firewall configured - VPS protected from SIP attacks")
         
-        log("✅ Base packages installed")
+        log("✅ Base packages + firewall installed")
     
     def _install_python_dependencies(self):
         """Installe les dépendances Python"""
@@ -829,6 +842,14 @@ class StreamingInstaller:
         """Configure l'enregistrement SIP"""
         log("📞 Setting up SIP configuration", "success")
         
+        # Vérifier si PJSIP existe déjà
+        if os.path.exists("/etc/asterisk/pjsip.conf"):
+            log("📞 Configuration SIP existante détectée")
+            response = input("Voulez-vous garder la config SIP existante ? [y/N]: ").strip().lower()
+            if response in ['y', 'yes', 'oui']:
+                log("✅ Configuration SIP existante conservée")
+                return
+                
         # Demander les informations SIP
         log("\n" + "="*60)
         log("📞 CONFIGURATION SIP REQUISE")
