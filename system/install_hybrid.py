@@ -556,7 +556,8 @@ class DatabaseInstaller:
         self.system_info = system_info
         self.db_name = "minibot_db"
         self.db_user = "robot"
-        self.db_password = generate_password(16)
+        # Use simple password to avoid special characters issues with PostgreSQL URLs
+        self.db_password = "minibot2024"
         
     def install(self):
         """Installation PostgreSQL (logique existante gardée)"""
