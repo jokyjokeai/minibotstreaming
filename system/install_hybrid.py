@@ -233,12 +233,29 @@ class AsteriskInstaller:
         if os.path.exists(self.install_dir):
             run_cmd(f"rm -rf {self.install_dir}", "Removing previous installation")
         
-        # Cloner depuis git (plus fiable que tarball)
+        # Télécharger version stable au lieu de git dev
         run_cmd(
-            f"git clone -b {self.asterisk_version} https://github.com/asterisk/asterisk {self.install_dir}",
-            f"Cloning Asterisk {self.asterisk_version}",
-            timeout=600
+            f"wget -q https://downloads.asterisk.org/pub/telephony/asterisk/asterisk-{self.asterisk_version}-current.tar.gz",
+            f"Downloading Asterisk {self.asterisk_version} stable release",
+            timeout=300
         )
+        
+        run_cmd(
+            f"tar -xzf asterisk-{self.asterisk_version}-current.tar.gz",
+            f"Extracting Asterisk {self.asterisk_version}",
+            timeout=60
+        )
+        
+        # Identifier le répertoire extrait (format: asterisk-22.x.x)
+        asterisk_dirs = [d for d in os.listdir('.') if d.startswith(f'asterisk-{self.asterisk_version}') and os.path.isdir(d)]
+        if not asterisk_dirs:
+            raise RuntimeError(f"Could not find extracted Asterisk directory")
+        
+        extracted_dir = asterisk_dirs[0]
+        if os.path.exists(self.install_dir):
+            run_cmd(f"rm -rf {self.install_dir}", "Removing existing directory")
+        
+        run_cmd(f"mv {extracted_dir} {self.install_dir}", "Moving to install directory")
         
         os.chdir(self.install_dir)
     
