@@ -898,10 +898,12 @@ class StreamingInstaller:
         """Génère la configuration SIP Asterisk"""
         log("📝 Generating Asterisk SIP configuration")
         
-        # CRITIQUE: Supprimer l'ancienne config qui cause les erreurs
-        log("🗑️ Removing old Asterisk configurations...")
+        # CRITIQUE: Supprimer TOUTES les anciennes configs qui causent les erreurs
+        log("🗑️ Removing ALL old Asterisk configurations...")
         run_cmd("rm -f /etc/asterisk/extensions.conf", check=False)
+        run_cmd("rm -f /etc/asterisk/extensions.ael", check=False)
         run_cmd("rm -f /etc/asterisk/pjsip.conf", check=False)
+        run_cmd("rm -f /etc/asterisk/users.conf", check=False)
         
         # Configuration PJSIP (Asterisk 22)
         pjsip_conf = f"""
@@ -1163,9 +1165,13 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
         if not test_audio_file.exists():
             raise Exception(f"Test audio file not found: {test_audio_file}")
         
-        # Copier le fichier vers l'installation
+        # Copier et convertir le fichier audio pour Vosk (16kHz mono requis)
         target_audio = Path("/opt/minibot/test_audio.wav")
-        run_cmd(f"cp {test_audio_file} {target_audio}", "Copying test audio file")
+        log("🔧 Converting audio to 16kHz mono for Vosk compatibility")
+        
+        # Conversion automatique avec sox : 16kHz, mono, WAV
+        run_cmd(f"sox {test_audio_file} -r 16000 -c 1 {target_audio}", 
+                "Converting audio format (16kHz mono)")
         
         # Créer un script Python de test Vosk
         test_script = f"""
