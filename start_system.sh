@@ -265,6 +265,56 @@ echo "✅ FastAPI lancé (PID: $API_PID)"
 
 sleep 5
 
+# ========== AUTO-HEALING STREAMING CHECKS ==========
+echo ""
+echo "🔧 Auto-healing streaming checks..."
+
+# Fonction de vérification et correction automatique
+check_and_fix() {
+    local service_name=$1
+    local check_command=$2
+    local fix_command=$3
+    local description=$4
+    
+    echo "🔍 Checking $description..."
+    
+    if eval "$check_command"; then
+        echo "✅ $description: OK"
+        return 0
+    else
+        echo "⚠️  $description: ISSUE DETECTED, auto-fixing..."
+        eval "$fix_command"
+        sleep 2
+        
+        # Re-vérifier après correction
+        if eval "$check_command"; then
+            echo "✅ $description: FIXED"
+            return 0
+        else
+            echo "❌ $description: FAILED TO FIX"
+            return 1
+        fi
+    fi
+}
+
+# Auto-healing checks
+check_and_fix "ollama_model" \
+    "ollama list | grep -q 'llama3.2:1b'" \
+    "ollama pull llama3.2:1b" \
+    "Ollama optimal model (llama3.2:1b)"
+
+check_and_fix "asterisk_ari_config" \
+    "grep -q 'enabled = yes' /etc/asterisk/ari.conf && grep -q 'MiniBotAI2025!' /etc/asterisk/ari.conf" \
+    "echo 'Auto-fixing ARI config...' && sudo sed -i 's/\${ARI_PASSWORD}/MiniBotAI2025!/g' /etc/asterisk/ari.conf" \
+    "Asterisk ARI configuration"
+
+check_and_fix "asterisk_http_config" \
+    "grep -q 'enabled=yes' /etc/asterisk/http.conf" \
+    "echo '[general]\nenabled=yes\nbindaddr=0.0.0.0\nbindport=8088\nwebsocket_timeout=30\n\n[websockets]\nenabled=yes' | sudo tee /etc/asterisk/http.conf > /dev/null" \
+    "Asterisk HTTP configuration"
+
+echo "✅ Auto-healing checks completed"
+
 # ========== VÉRIFICATIONS FINALES ==========
 echo ""
 echo "🧪 Vérification du système streaming..."

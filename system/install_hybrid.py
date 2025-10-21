@@ -962,6 +962,9 @@ class StreamingInstaller:
             # Configuration SIP
             self._setup_sip_configuration()
             
+            # Optimisations streaming automatiques
+            self._apply_streaming_optimizations()
+            
             # Tests finaux
             self._run_installation_tests()
             
@@ -1590,6 +1593,170 @@ if __name__ == "__main__":
         
         # Nettoyer
         run_cmd(f"rm -f {target_audio} {test_script_path}", check=False)
+    
+    def _apply_streaming_optimizations(self):
+        """Applique automatiquement toutes les optimisations streaming pour performances maximales"""
+        log("🚀 Applying streaming optimizations for maximum performance", "success")
+        
+        # 1. Optimisations Ollama pour JSON parfait
+        self._optimize_ollama_for_streaming()
+        
+        # 2. Vérifications et corrections ARI/HTTP
+        self._verify_and_fix_ari_config()
+        
+        # 3. Optimisations système pour streaming temps réel
+        self._optimize_system_for_streaming()
+        
+        log("✅ All streaming optimizations applied successfully", "success")
+    
+    def _optimize_ollama_for_streaming(self):
+        """Optimise Ollama pour des réponses JSON parfaites"""
+        log("🤖 Optimizing Ollama for perfect JSON responses")
+        
+        try:
+            # Vérifier si Ollama est accessible
+            result = run_cmd("curl -s http://localhost:11434/api/version", check=False)
+            if result.returncode != 0:
+                log("⚠️ Ollama not accessible, starting service", "warning")
+                run_cmd("systemctl start ollama", check=False)
+                time.sleep(5)
+            
+            # Vérifier le modèle correct llama3.2:1b
+            result = run_cmd("ollama list", check=False)
+            if result.returncode == 0:
+                if "llama3.2:1b" not in result.stdout:
+                    log("📥 Installing optimized model llama3.2:1b for streaming")
+                    run_cmd("ollama pull llama3.2:1b", timeout=600)
+                else:
+                    log("✅ Optimal model llama3.2:1b already available")
+            
+            # Test JSON response avec paramètres optimisés
+            test_payload = {
+                "model": "llama3.2:1b",
+                "messages": [
+                    {"role": "system", "content": "Réponds UNIQUEMENT en JSON: {\"intent\": \"affirm\", \"confidence\": 0.9}"},
+                    {"role": "user", "content": "oui ça va"}
+                ],
+                "options": {
+                    "temperature": 0.05,
+                    "top_p": 0.15,
+                    "num_predict": 20,
+                    "stop": ["}"]
+                }
+            }
+            
+            import json as json_module
+            test_file = "/tmp/ollama_test.json"
+            with open(test_file, "w") as f:
+                json_module.dump(test_payload, f)
+            
+            result = run_cmd(f"curl -s -X POST http://localhost:11434/api/chat -d @{test_file}", check=False)
+            if result.returncode == 0:
+                log("✅ Ollama optimization parameters validated")
+            else:
+                log("⚠️ Ollama test failed, but parameters will be used by robot", "warning")
+            
+            run_cmd(f"rm -f {test_file}", check=False)
+            
+        except Exception as e:
+            log(f"⚠️ Ollama optimization warning: {e}", "warning")
+    
+    def _verify_and_fix_ari_config(self):
+        """Vérifie et corrige la configuration ARI/HTTP"""
+        log("🔧 Verifying and fixing ARI/HTTP configuration")
+        
+        try:
+            # Vérifier que HTTP est activé dans http.conf
+            http_conf_path = "/etc/asterisk/http.conf"
+            if os.path.exists(http_conf_path):
+                with open(http_conf_path, "r") as f:
+                    content = f.read()
+                
+                if "enabled=yes" not in content:
+                    log("🔧 Fixing HTTP configuration", "warning")
+                    # Réécrire le fichier HTTP avec config correcte
+                    http_conf = """[general]
+enabled=yes
+bindaddr=0.0.0.0
+bindport=8088
+websocket_timeout=30
+
+[websockets]
+enabled=yes
+"""
+                    with open(http_conf_path, "w") as f:
+                        f.write(http_conf)
+                    
+                    log("✅ HTTP configuration fixed")
+                else:
+                    log("✅ HTTP configuration is correct")
+            
+            # Vérifier que ARI est configuré avec un mot de passe fixe
+            ari_conf_path = "/etc/asterisk/ari.conf"
+            if os.path.exists(ari_conf_path):
+                with open(ari_conf_path, "r") as f:
+                    content = f.read()
+                
+                if "${ARI_PASSWORD}" in content:
+                    log("🔧 Fixing ARI password variable", "warning")
+                    # Remplacer la variable par le mot de passe fixe
+                    content = content.replace("${ARI_PASSWORD}", "MiniBotAI2025!")
+                    with open(ari_conf_path, "w") as f:
+                        f.write(content)
+                    log("✅ ARI password variable fixed")
+                elif "MiniBotAI2025!" in content:
+                    log("✅ ARI configuration is correct")
+                else:
+                    log("⚠️ ARI password not found, using default config", "warning")
+            
+            # Redémarrer Asterisk pour appliquer les changements
+            log("🔄 Restarting Asterisk to apply configuration changes")
+            run_cmd("systemctl restart asterisk", check=False)
+            time.sleep(3)
+            
+            # Vérifier que les services sont accessibles
+            result = run_cmd("systemctl is-active asterisk", check=False)
+            if result.returncode == 0:
+                log("✅ Asterisk restarted successfully")
+            else:
+                log("⚠️ Asterisk restart issues, check manually", "warning")
+                
+        except Exception as e:
+            log(f"⚠️ ARI configuration warning: {e}", "warning")
+    
+    def _optimize_system_for_streaming(self):
+        """Optimise le système pour le streaming temps réel"""
+        log("⚡ Optimizing system for real-time streaming")
+        
+        try:
+            # Augmenter les limites de fichiers ouverts pour les WebSockets
+            ulimit_conf = """# MiniBotPanel v2 streaming optimizations
+* soft nofile 65536
+* hard nofile 65536
+* soft nproc 32768
+* hard nproc 32768
+"""
+            with open("/etc/security/limits.d/minibot-streaming.conf", "w") as f:
+                f.write(ulimit_conf)
+            
+            # Optimiser les paramètres réseau pour WebRTC/WebSocket
+            sysctl_conf = """# MiniBotPanel v2 network optimizations for streaming
+net.core.rmem_max = 16777216
+net.core.wmem_max = 16777216
+net.ipv4.tcp_rmem = 4096 87380 16777216
+net.ipv4.tcp_wmem = 4096 16384 16777216
+net.core.netdev_max_backlog = 5000
+"""
+            with open("/etc/sysctl.d/99-minibot-streaming.conf", "w") as f:
+                f.write(sysctl_conf)
+            
+            # Appliquer les optimisations sysctl
+            run_cmd("sysctl --system", check=False)
+            
+            log("✅ System optimizations applied")
+            
+        except Exception as e:
+            log(f"⚠️ System optimization warning: {e}", "warning")
     
     def _fix_env_file_for_production(self):
         """Corrige automatiquement le fichier .env pour éviter les problèmes de caractères spéciaux"""

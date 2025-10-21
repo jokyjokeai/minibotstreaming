@@ -142,7 +142,11 @@ Intents :
                     {"role": "system", "content": "Réponds juste 'OK' en JSON: {\"status\": \"OK\"}"},
                     {"role": "user", "content": "test"}
                 ],
-                options={"temperature": 0.1}
+                options={
+                    "temperature": 0.05,
+                    "top_p": 0.15, 
+                    "num_predict": 10
+                }
             )
             
             self.stats["model_loaded"] = True
@@ -241,9 +245,10 @@ Intents :
                     {"role": "user", "content": text}
                 ],
                 options={
-                    "temperature": 0.1,
-                    "top_p": 0.9,
-                    "num_predict": 50  # Limite les tokens pour rapidité
+                    "temperature": 0.05,  # Optimisé pour consistance JSON
+                    "top_p": 0.15,        # Réduction pour réponses plus déterministes
+                    "num_predict": 20,    # Optimisé pour réponses JSON courtes
+                    "stop": ["}"]         # Arrêt après fermeture JSON
                 }
             )
             
