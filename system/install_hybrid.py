@@ -940,7 +940,7 @@ exten => _X.,1,NoOp(Outgoing call to ${{EXTEN}})
 [minibot-calls]
 exten => _X.,1,NoOp(MiniBotPanel outgoing call to ${{EXTEN}})
  same => n,Set(CHANNEL(hangup_handler_push)=hangup-handler,s,1)
- same => n,AMD({config.AMD_INITIAL_SILENCE},{config.AMD_GREETING},{config.AMD_AFTER_GREETING_SILENCE},{config.AMD_TOTAL_ANALYSIS_TIME},{config.AMD_MIN_WORD_LENGTH},{config.AMD_BETWEEN_WORDS_SILENCE})
+ same => n,AMD(2000,5000,800,7000,100,50)
  same => n,Set(AMD_STATUS=${{AMDSTATUS}})
  same => n,Set(AMD_CAUSE=${{AMDCAUSE}})
  same => n,Stasis(minibot,${{EXTEN}})
