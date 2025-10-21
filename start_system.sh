@@ -32,7 +32,7 @@ else
     echo "✅ Fichiers audio 16kHz installés dans Asterisk"
 fi
 
-# Vérifier Asterisk 22 + AudioFork
+# Vérifier et démarrer Asterisk 22 + AudioFork (méthode robuste)
 echo "🔍 Vérification Asterisk 22 + AudioFork..."
 if systemctl is-active --quiet asterisk; then
     echo "✅ Asterisk est actif"
@@ -43,9 +43,51 @@ if systemctl is-active --quiet asterisk; then
         echo "⚠️  AudioFork non détecté (nécessaire pour streaming)"
     fi
 else
-    echo "⚠️ Asterisk n'est pas actif, démarrage..."
-    sudo systemctl start asterisk
-    sleep 5
+    echo "⚠️ Asterisk n'est pas actif, démarrage robuste..."
+    
+    # Méthode robuste de démarrage Asterisk
+    echo "🧹 Nettoyage processus Asterisk existants..."
+    sudo systemctl stop asterisk 2>/dev/null || true
+    sudo pkill -f asterisk 2>/dev/null || true
+    sleep 3
+    
+    echo "🔒 Nettoyage fichiers de lock..."
+    sudo rm -f /var/run/asterisk/asterisk.ctl 2>/dev/null || true
+    sudo rm -f /var/run/asterisk/asterisk.pid 2>/dev/null || true
+    
+    echo "📋 Correction permissions configurations..."
+    sudo chown asterisk:asterisk /etc/asterisk/pjsip.conf 2>/dev/null || true
+    sudo chown asterisk:asterisk /etc/asterisk/asterisk.conf 2>/dev/null || true
+    sudo chmod 644 /etc/asterisk/pjsip.conf 2>/dev/null || true
+    sudo chmod 644 /etc/asterisk/asterisk.conf 2>/dev/null || true
+    
+    echo "📁 Correction permissions répertoires..."
+    for dir in "/var/run/asterisk" "/var/lib/asterisk" "/var/log/asterisk" "/var/spool/asterisk"; do
+        sudo mkdir -p "$dir" 2>/dev/null || true
+        sudo chown -R asterisk:asterisk "$dir" 2>/dev/null || true
+        sudo chmod 755 "$dir" 2>/dev/null || true
+    done
+    
+    echo "🎯 Démarrage Asterisk avec retry..."
+    max_attempts=3
+    for attempt in $(seq 1 $max_attempts); do
+        echo "   Tentative $attempt/$max_attempts"
+        
+        sudo systemctl start asterisk
+        sleep 5
+        
+        if systemctl is-active --quiet asterisk; then
+            echo "✅ Asterisk démarré avec succès (tentative $attempt)"
+            break
+        elif [ $attempt -eq $max_attempts ]; then
+            echo "❌ Échec démarrage Asterisk après $max_attempts tentatives"
+            echo "   Vérifiez: sudo journalctl -u asterisk"
+        else
+            echo "⚠️  Tentative $attempt échouée, retry..."
+            sudo systemctl stop asterisk 2>/dev/null || true
+            sleep 2
+        fi
+    done
 fi
 
 # Vérifier PostgreSQL
@@ -213,17 +255,18 @@ else
     echo "❌ API Health Check: FAILED"
 fi
 
-# Test Vosk via API
+# Test services via health check
 echo "🎤 Test Vosk via API..."
-if curl -s http://localhost:8000/health | grep -q "vosk.*ready"; then
-    echo "✅ Vosk ASR: Prêt"
+HEALTH_RESPONSE=$(curl -s http://localhost:8000/health 2>/dev/null)
+if echo "$HEALTH_RESPONSE" | grep -q '"streaming":"enabled"'; then
+    echo "✅ Vosk ASR: Intégré dans streaming"
 else
     echo "⚠️  Vosk ASR: Non prêt"
 fi
 
-# Test Ollama via API
+# Test Ollama via API  
 echo "🤖 Test Ollama via API..."
-if curl -s http://localhost:8000/health | grep -q "ollama.*ready"; then
+if echo "$HEALTH_RESPONSE" | grep -q '"ollama":"running"'; then
     echo "✅ Ollama NLP: Prêt"
 else
     echo "⚠️  Ollama NLP: Non prêt"
