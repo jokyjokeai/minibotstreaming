@@ -947,13 +947,20 @@ class StreamingInstaller:
         """Configure l'enregistrement SIP"""
         log("📞 Setting up SIP configuration", "success")
         
-        # Vérifier si PJSIP existe déjà
+        # Vérifier si PJSIP existe déjà et s'il contient de vraies configs (pas juste template)
         if os.path.exists("/etc/asterisk/pjsip.conf"):
-            log("📞 Configuration SIP existante détectée")
-            response = input("Voulez-vous garder la config SIP existante ? [y/N]: ").strip().lower()
-            if response in ['y', 'yes', 'oui']:
-                log("✅ Configuration SIP existante conservée")
-                return
+            with open("/etc/asterisk/pjsip.conf", 'r') as f:
+                content = f.read()
+            
+            # Vérifier si c'est une vraie config (contient des sections configurées)
+            if "type=registration" in content and "server_uri=sip:" in content:
+                log("📞 Configuration SIP existante détectée")
+                response = input("Voulez-vous garder la config SIP existante ? [y/N]: ").strip().lower()
+                if response in ['y', 'yes', 'oui']:
+                    log("✅ Configuration SIP existante conservée")
+                    return
+            else:
+                log("⚠️ Template PJSIP vide détecté, configuration SIP requise")
                 
         # Demander les informations SIP
         log("\n" + "="*60)
@@ -1125,9 +1132,12 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
             # OPTIMISATION: Utiliser reload au lieu de restart pour éviter les blocages
             log("🔄 Reloading Asterisk configuration (safer than restart)")
             
-            # CRITIQUE: Nettoyer les règles iptables qui peuvent bloquer SIP
-            log("🧹 Cleaning any blocking iptables rules for SIP")
-            run_cmd("iptables -D INPUT -p udp --dport 5060 -j DROP", check=False)
+            # CRITIQUE: Bloquer temporairement SIP pour éviter les attaques pendant l'installation
+            log("🛡️ Temporarily blocking SIP port to prevent attacks during startup")
+            run_cmd("iptables -I INPUT -p udp --dport 5060 -j DROP", check=False)
+            
+            # Nettoyer les anciennes règles bloquantes
+            log("🧹 Cleaning any old blocking iptables rules for SIP")
             run_cmd("iptables -D OUTPUT -p udp --sport 5060 -j DROP", check=False)
             run_cmd("iptables -D INPUT -p tcp --dport 5060 -j DROP", check=False)
             run_cmd("iptables -D OUTPUT -p tcp --sport 5060 -j DROP", check=False)
@@ -1154,6 +1164,11 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
             
             # Vérifier que c'est démarré
             run_cmd("systemctl is-active asterisk", check=True)
+            
+            # CRITIQUE: Débloquer le port SIP maintenant qu'Asterisk est démarré
+            log("🔓 Unblocking SIP port - Asterisk is now running safely")
+            run_cmd("iptables -D INPUT -p udp --dport 5060 -j DROP", check=False)
+            
             log("✅ Asterisk service ready successfully")
             
         except Exception as e:
