@@ -232,7 +232,7 @@ class AsteriskInstaller:
         
         # Cloner depuis git (plus fiable que tarball)
         run_cmd(
-            f"git clone -b {self.asterisk_version} https://gerrit.asterisk.org/asterisk {self.install_dir}",
+            f"git clone -b {self.asterisk_version} https://github.com/asterisk/asterisk {self.install_dir}",
             f"Cloning Asterisk {self.asterisk_version}",
             timeout=600
         )
