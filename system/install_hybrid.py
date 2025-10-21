@@ -538,12 +538,12 @@ class ConfigManager:
         self.project_root = Path(__file__).parent.parent
         self.config_dir = self.project_root / "asterisk-configs"
         
-    def setup_configs(self, db_password: str):
+    def setup_configs(self, db_password: str, sip_config: dict = None):
         """Configure tous les fichiers pour le mode streaming"""
         log("⚙️ Setting up configurations for streaming mode", "success")
         
         self.setup_environment_file(db_password)
-        self.setup_asterisk_configs()
+        self.setup_asterisk_configs(sip_config)
         self.setup_python_configs()
         
         log("✅ Configuration setup completed", "success")
@@ -646,11 +646,18 @@ PUBLIC_API_URL=http://localhost:8000
         
         log(f"✅ Environment file created: {env_file}")
     
-    def setup_asterisk_configs(self):
+    def setup_asterisk_configs(self, sip_config: dict = None):
         """Configure Asterisk pour le mode streaming"""
         log("🔧 Setting up Asterisk configurations for streaming")
         
-        # Configurations streaming
+        # PJSIP : Génération dynamique avec vraies informations SIP
+        if sip_config:
+            self._generate_pjsip_config(sip_config)
+        else:
+            log("⚠️ No SIP config provided, using template", "warning")
+            self._replace_config("pjsip_streaming.conf", "/etc/asterisk/pjsip.conf")
+        
+        # Autres configs : Merge possible
         self._copy_config("ari_streaming.conf", "/etc/asterisk/ari.conf")
         self._copy_config("extensions_streaming.conf", "/etc/asterisk/extensions.conf")
         self._copy_config("amd_streaming.conf", "/etc/asterisk/amd.conf")
@@ -669,6 +676,76 @@ bindport=8088
         run_cmd("chown -R asterisk:asterisk /etc/asterisk/", check=False)
         
         log("✅ Asterisk configurations installed")
+    
+    def _generate_pjsip_config(self, sip_config: dict):
+        """Génère la configuration PJSIP avec les vraies informations SIP (comme ancien install.py)"""
+        log(f"📞 Generating PJSIP config for {sip_config['username']}@{sip_config['server']}")
+        
+        pjsip_conf = f"""[global]
+type=global
+endpoint_identifier_order=ip,username
+
+[transport-udp]
+type=transport
+protocol=udp
+bind=0.0.0.0:5060
+
+[{sip_config['username']}]
+type=registration
+transport=transport-udp
+outbound_auth={sip_config['username']}-auth
+server_uri=sip:{sip_config['server']}
+client_uri=sip:{sip_config['username']}@{sip_config['server']}
+retry_interval=60
+
+[{sip_config['username']}-auth]
+type=auth
+auth_type=userpass
+username={sip_config['username']}
+password={sip_config['password']}
+
+[provider-endpoint]
+type=endpoint
+transport=transport-udp
+context=outbound-robot
+outbound_auth={sip_config['username']}-auth
+aors=provider-aor
+allow=!all,ulaw,alaw,gsm
+from_user={sip_config['username']}
+from_domain={sip_config['server']}
+
+[provider-aor]
+type=aor
+contact=sip:{sip_config['server']}
+
+[provider-identify]
+type=identify
+endpoint=provider-endpoint
+match={sip_config['server']}
+"""
+        
+        with open("/etc/asterisk/pjsip.conf", "w") as f:
+            f.write(pjsip_conf)
+        
+        log("✅ PJSIP configuration generated with real SIP credentials")
+    
+    def _replace_config(self, source_name: str, dest_path: str):
+        """Remplace complètement le fichier de configuration (pour PJSIP)"""
+        source_path = self.config_dir / source_name
+        
+        if source_path.exists():
+            log(f"📋 Replacing {dest_path} with {source_name}")
+            
+            # Remplacer complètement le fichier (comme ancien install.py)
+            with open(source_path, "r") as source_file:
+                content = source_file.read()
+                
+            with open(dest_path, "w") as dest_file:
+                dest_file.write(content)
+                    
+            log(f"✅ Replaced {dest_path} with {source_name}")
+        else:
+            log(f"⚠️ Config file not found: {source_path}", "warning")
     
     def _copy_config(self, source_name: str, dest_path: str):
         """Merge notre configuration dans le fichier existant"""
@@ -815,21 +892,34 @@ class StreamingInstaller:
             base_packages = [
                 "python3", "python3-pip", "python3-venv", "python3-dev",
                 "build-essential", "git", "wget", "curl", "unzip",
-                "portaudio19-dev", "libasound2-dev", "ffmpeg", "sox", "ufw"
+                "portaudio19-dev", "libasound2-dev", "ffmpeg", "sox", "ufw", "fail2ban"
             ]
             
             run_cmd("apt-get update")
             run_cmd(f"apt-get install -y {' '.join(base_packages)}")
             
-            # Configuration firewall UFW (comme ancien script)
-            log("🛡️ Configuring UFW firewall for VPS security")
+            # Configuration firewall UFW + fail2ban (sécurité SIP)
+            log("🛡️ Configuring UFW firewall + fail2ban for VPS security")
             run_cmd("ufw allow 22/tcp", "Allow SSH", check=False)
             run_cmd("ufw allow 5060/udp", "Allow SIP", check=False) 
             run_cmd("ufw allow 10000:20000/udp", "Allow RTP", check=False)
             run_cmd("ufw allow 8088/tcp", "Allow ARI", check=False)
             run_cmd("ufw allow 8000/tcp", "Allow FastAPI", check=False)
+            
+            # Bloquer IP attaquante connue
+            run_cmd("ufw deny from 77.110.109.104", "Block SIP attacker IP", check=False)
+            
             run_cmd("ufw --force enable", "Enable firewall", check=False)
-            log("✅ UFW firewall configured - VPS protected from SIP attacks")
+            
+            # Configuration fail2ban pour SIP
+            fail2ban_config = self.project_dir / "system" / "fail2ban-asterisk.conf"
+            if fail2ban_config.exists():
+                run_cmd(f"cp {fail2ban_config} /etc/fail2ban/jail.local", "Install fail2ban config", check=False)
+                run_cmd("systemctl enable fail2ban", "Enable fail2ban", check=False)
+                run_cmd("systemctl restart fail2ban", "Restart fail2ban", check=False)
+                log("✅ fail2ban configured for SIP protection")
+            
+            log("✅ UFW firewall + fail2ban configured - VPS protected from SIP attacks")
         
         log("✅ Base packages + firewall installed")
     
@@ -903,7 +993,8 @@ class StreamingInstaller:
         # Valeurs automatiques (pas de questions)
         sip_config['port'] = "5060"
         sip_config['trunk_name'] = "provider"
-        sip_config['context'] = "from-internal"
+        sip_config['context'] = "outbound-robot"  # IMPORTANT: doit correspondre au dialplan
+        sip_config['server'] = sip_config['host']  # Alias pour compatibilité
         
         log(f"📞 Configuration automatique: Port {sip_config['port']}, Trunk '{sip_config['trunk_name']}'")
         
@@ -915,54 +1006,52 @@ class StreamingInstaller:
         
         # Les configs corrompues ont déjà été supprimées après "make samples"
         
-        # Configuration PJSIP (Asterisk 22)
-        pjsip_conf = f"""
-; =============================================================================
-; PJSIP Configuration for MiniBotPanel v2 - Generated {datetime.now().isoformat()}
-; =============================================================================
+        # Configuration PJSIP (Asterisk 22) - Format compatible ancien install.py
+        pjsip_conf = f"""[global]
+type=global
+endpoint_identifier_order=ip,username
 
 [transport-udp]
 type=transport
 protocol=udp
-bind=0.0.0.0:{sip_config['port']}
+bind=0.0.0.0:5060
 
-; Trunk SIP Provider
-[{sip_config['trunk_name']}]
-type=endpoint
-context={sip_config['context']}
-outbound_auth={sip_config['trunk_name']}_auth
-aors={sip_config['trunk_name']}_aor
-allow=!all,alaw,ulaw,g722
+[{sip_config['username']}]
+type=registration
+transport=transport-udp
+outbound_auth={sip_config['username']}-auth
+server_uri=sip:{sip_config['host']}
+client_uri=sip:{sip_config['username']}@{sip_config['host']}
+retry_interval=60
 
-[{sip_config['trunk_name']}_auth]
+[{sip_config['username']}-auth]
 type=auth
 auth_type=userpass
 username={sip_config['username']}
 password={sip_config['password']}
 
-[{sip_config['trunk_name']}_aor]
-type=aor
-contact=sip:{sip_config['host']}:{sip_config['port']}
+[{sip_config['trunk_name']}]
+type=endpoint
+transport=transport-udp
+context={sip_config['context']}
+outbound_auth={sip_config['username']}-auth
+aors={sip_config['trunk_name']}-aor
+allow=!all,ulaw,alaw,gsm
+from_user={sip_config['username']}
+from_domain={sip_config['host']}
 
-[{sip_config['trunk_name']}_identify]
+[{sip_config['trunk_name']}-aor]
+type=aor
+contact=sip:{sip_config['host']}
+
+[{sip_config['trunk_name']}-identify]
 type=identify
 endpoint={sip_config['trunk_name']}
 match={sip_config['host']}
-
-; Registration
-[{sip_config['trunk_name']}_reg]
-type=registration
-outbound_auth={sip_config['trunk_name']}_auth
-server_uri=sip:{sip_config['host']}:{sip_config['port']}
-client_uri=sip:{sip_config['username']}@{sip_config['host']}
-retry_interval=60
 """
         
-        # NOUVELLE APPROCHE: Append la config SIP au fichier existant
-        with open("/etc/asterisk/pjsip.conf", "a") as f:
-            f.write("\n\n; ========================================\n")
-            f.write("; MiniBotPanel v2 SIP Configuration\n")
-            f.write("; ========================================\n")
+        # CORRECTION: Remplacer complètement le fichier PJSIP (comme ancien install.py)
+        with open("/etc/asterisk/pjsip.conf", "w") as f:
             f.write(pjsip_conf)
         
         # Configuration des extensions (dialplan)
