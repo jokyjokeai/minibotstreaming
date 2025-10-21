@@ -315,6 +315,37 @@ check_and_fix "asterisk_http_config" \
 
 echo "✅ Auto-healing checks completed"
 
+# Vérifications supplémentaires optimisations
+echo "🔧 Vérifications optimisations supplémentaires..."
+
+# Vérifier modèle Ollama optimal
+if ollama list 2>/dev/null | grep -q 'llama3.2:1b'; then
+    echo "✅ Modèle Ollama optimal présent"
+else
+    echo "📥 Installation modèle optimal..."
+    ollama pull llama3.2:1b >/dev/null 2>&1 &
+fi
+
+# Vérifier configuration timeout
+if grep -q 'OLLAMA_TIMEOUT.*8' config.py 2>/dev/null; then
+    echo "✅ Configuration timeout optimisée"
+else
+    echo "🔧 Optimisation timeout..."
+    sed -i 's/OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "10"))/OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "8"))/' config.py 2>/dev/null || true
+fi
+
+# Vérifier optimisations NLP
+if grep -q '"temperature": 0.05' services/nlp_intent.py 2>/dev/null; then
+    echo "✅ Paramètres NLP optimisés"
+else
+    echo "🧠 Optimisation paramètres NLP..."
+    sed -i 's/"temperature": 0.1/"temperature": 0.05/' services/nlp_intent.py 2>/dev/null || true
+    sed -i 's/"num_predict": 50/"num_predict": 20/' services/nlp_intent.py 2>/dev/null || true
+    sed -i 's/"top_p": 0.9/"top_p": 0.15/' services/nlp_intent.py 2>/dev/null || true
+fi
+
+echo "✅ Optimisations vérifiées et appliquées"
+
 # ========== VÉRIFICATIONS FINALES ==========
 echo ""
 echo "🧪 Vérification du système streaming..."

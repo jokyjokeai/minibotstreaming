@@ -1822,6 +1822,8 @@ net.core.netdev_max_backlog = 5000
         
         log("=" * 60, "success")
 
+# Cette fonction existe déjà dans la classe StreamingInstaller comme _apply_streaming_optimizations()
+
 # =============================================================================
 # POINT D'ENTRÉE PRINCIPAL
 # =============================================================================
