@@ -850,19 +850,24 @@ class StreamingInstaller:
         """Configure l'enregistrement SIP"""
         log("📞 Setting up SIP configuration", "success")
         
-        # AUTOMATIQUE: toujours régénérer les configs pour éviter corruptions
-        log("📞 Régénération automatique des configurations SIP")
+        # Vérifier si PJSIP existe déjà
+        if os.path.exists("/etc/asterisk/pjsip.conf"):
+            log("📞 Configuration SIP existante détectée")
+            response = input("Voulez-vous garder la config SIP existante ? [y/N]: ").strip().lower()
+            if response in ['y', 'yes', 'oui']:
+                log("✅ Configuration SIP existante conservée")
+                return
                 
-        # Configuration SIP par défaut (non-interactive)
-        log("📞 Utilisation configuration SIP par défaut")
-        sip_config = {
-            'host': 'sip.provider.com',
-            'username': 'user',
-            'password': 'pass', 
-            'port': '5060',
-            'trunk_name': 'provider',
-            'context': 'from-internal'
-        }
+        # Demander les informations SIP
+        log("\n" + "="*60)
+        log("📞 CONFIGURATION SIP REQUISE")
+        log("="*60)
+        log("Pour que MiniBotPanel puisse passer des appels,")
+        log("vous devez configurer un trunk SIP.")
+        log("")
+        
+        # Collecter les informations
+        sip_config = self._collect_sip_info()
         
         # Générer la configuration Asterisk
         self._generate_asterisk_sip_config(sip_config)
@@ -1010,8 +1015,15 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
         log("🚀 Starting Asterisk service")
         
         try:
+            # CRITIQUE: Nettoyer les processus zombies/bloqués avant restart
+            log("🧹 Cleaning any existing Asterisk processes")
+            run_cmd("pkill -9 asterisk", check=False)
+            time.sleep(2)
+            run_cmd("systemctl stop asterisk", check=False)
+            time.sleep(3)
+            
             # Recharger la configuration
-            run_cmd("systemctl restart asterisk", "Restarting Asterisk", timeout=120)
+            run_cmd("systemctl start asterisk", "Starting Asterisk", timeout=120)
             time.sleep(5)  # Attendre le démarrage
             
             # Vérifier que c'est démarré
