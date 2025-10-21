@@ -6,7 +6,7 @@ load_dotenv()
 # =============================================================================
 # DATABASE & API (Configuration existante gardée)
 # =============================================================================
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://robot:password@localhost/robot_calls")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://robot:password@localhost/minibot_db")
 
 ARI_URL = os.getenv("ARI_URL", "http://localhost:8088")
 ARI_USERNAME = os.getenv("ARI_USERNAME", "robot")
