@@ -40,6 +40,12 @@ class IntentEngine:
         self.is_available = OLLAMA_AVAILABLE
         self.ollama_client = None
         
+        # Chargement du contexte de campagne
+        self.campaign_context = self._load_campaign_context()
+        
+        # Chargement des prompts dynamiques
+        self.dynamic_prompts = self._load_dynamic_prompts()
+        
         # Statistiques
         self.stats = {
             "total_requests": 0,
@@ -60,55 +66,195 @@ class IntentEngine:
             "not_interested": "negative"
         }
         
-        # Prompts système optimisés pour le context français
+        # Prompts système optimisés avec contexte campagne
         self.system_prompts = {
-            "general": """Tu es un module NLP pour un robot d'appel français de qualification commerciale.
-Analyse l'intention du client et réponds UNIQUEMENT en JSON au format {"intent": "...", "confidence": 0.9}.
+            "general": f"""Tu es un module NLP pour un robot d'appel de FRANCE PATRIMOINE.
+
+CONTEXTE CAMPAGNE:
+{self.campaign_context}
+
+Tu analyses les réponses des prospects français à nos questions sur l'optimisation de placements financiers.
+Réponds UNIQUEMENT en JSON au format {{"intent": "...", "confidence": 0.9}}.
 
 Intents possibles :
 - "affirm" : oui, d'accord, ok, tout à fait, absolument, évidemment
 - "deny" : non, pas intéressé, pas le temps, pas maintenant  
 - "callback" : rappel, rappeler, plus tard, demain, autre moment
-- "price" : combien, coût, prix, tarif, cher, gratuit
+- "price" : combien, coût, prix, tarif, cher, gratuit, frais
 - "interested" : intéressé, ça m'intéresse, dites-moi en plus
 - "not_interested" : pas intéressé, n'ai pas besoin, ça ne m'intéresse pas
 - "unsure" : peut-être, je ne sais pas, il faut que je réfléchisse
 
 Réponds TOUJOURS en JSON valide.""",
 
-            "greeting": """Tu analyses la réponse à une introduction commerciale.
-Réponds UNIQUEMENT en JSON : {"intent": "...", "confidence": 0.9}
+            "greeting": f"""Tu analyses la réponse à l'introduction FRANCE PATRIMOINE.
+Réponds UNIQUEMENT en JSON : {{"intent": "...", "confidence": 0.9}}
 
-Contexte : "J'ai juste trois petites questions pour voir si nous pouvons vous aider à protéger, optimiser votre patrimoine. Ça vous va ?"
+{self.campaign_context}
 
-Intents :
-- "affirm" : oui, ok, d'accord, allez-y, je vous écoute
-- "deny" : non, pas le temps, pas intéressé, raccrochez
-- "unsure" : peut-être, ça dépend, voyons
-- "callback" : rappel plus tard, pas maintenant""",
-
-            "qualification": """Tu analyses la réponse à une question de qualification financière.
-Réponds UNIQUEMENT en JSON : {"intent": "...", "confidence": 0.9}
+Le prospect répond à l'introduction: "J'ai juste trois petites questions pour voir si nous pouvons vous aider à protéger, optimiser votre patrimoine. Ça vous va ?"
 
 Intents :
-- "affirm" : oui, j'ai, effectivement, bien sûr
-- "deny" : non, je n'ai pas, pas du tout
-- "price" : combien ça rapporte, quel taux, quel rendement
-- "unsure" : je ne sais pas, peut-être, il faut voir""",
+- "affirm" : oui, ok, d'accord, allez-y, je vous écoute, pourquoi pas
+- "deny" : non, pas le temps, pas intéressé, raccrochez, ça ne m'intéresse pas
+- "unsure" : peut-être, ça dépend, voyons, je ne sais pas
+- "callback" : rappel plus tard, pas maintenant, pas le bon moment""",
 
-            "final_offer": """Tu analyses la réponse à une proposition de rappel commercial.
-Réponds UNIQUEMENT en JSON : {"intent": "...", "confidence": 0.9}
+            "qualification": f"""Tu analyses la réponse aux questions de qualification FRANCE PATRIMOINE.
+Réponds UNIQUEMENT en JSON : {{"intent": "...", "confidence": 0.9}}
 
-Contexte : "Un de nos experts vous rappelle sous 48h pour analyser votre dossier. Ça vous va ?"
+{self.campaign_context}
+
+Les questions de qualification portent sur:
+- Les placements actuels (livret A, PEL, assurance-vie)
+- Le rendement par rapport à l'inflation  
+- La satisfaction du conseiller bancaire actuel
 
 Intents :
-- "affirm" : oui, d'accord, ok, parfait, allez-y
-- "deny" : non, pas intéressé, ça ne m'intéresse pas
-- "callback" : oui mais plus tard, pas cette semaine, dans un mois
-- "price" : c'est gratuit, ça coûte combien, y a-t-il des frais"""
+- "affirm" : oui, j'ai, effectivement, bien sûr, tout à fait
+- "deny" : non, je n'ai pas, pas du tout, jamais
+- "price" : combien ça rapporte, quel taux, quel rendement, combien
+- "interested" : intéressant, dites-moi en plus, ça m'intéresse
+- "unsure" : je ne sais pas, peut-être, il faut voir, ça dépend""",
+
+            "final_offer": f"""Tu analyses la réponse à l'offre finale FRANCE PATRIMOINE.
+Réponds UNIQUEMENT en JSON : {{"intent": "...", "confidence": 0.9}}
+
+{self.campaign_context}
+
+Le prospect répond à la proposition: "Un de nos experts vous rappelle sous 48h pour analyser votre dossier et vous présenter nos solutions. Ça vous va ?"
+
+Intents :
+- "affirm" : oui, d'accord, ok, parfait, allez-y, très bien
+- "deny" : non, pas intéressé, ça ne m'intéresse pas, merci mais non
+- "callback" : oui mais plus tard, pas cette semaine, dans un mois, rappel différé
+- "price" : c'est gratuit, ça coûte combien, y a-t-il des frais, quel prix
+- "interested" : intéressant, je suis intéressé, dites-moi en plus"""
         }
         
         self._initialize_ollama()
+
+    def _load_campaign_context(self) -> str:
+        """Charge le contexte de campagne complet depuis scenarios_streaming.py"""
+        try:
+            import os
+            
+            # Chemin vers scenarios_streaming.py
+            scenarios_path = os.path.join(os.path.dirname(__file__), '..', 'scenarios_streaming.py')
+            
+            if os.path.exists(scenarios_path):
+                with open(scenarios_path, 'r', encoding='utf-8') as f:
+                    scenario_content = f.read()
+                
+                # Extraire les parties clés du scénario
+                context_parts = []
+                
+                # Extraire STREAMING_CONFIG
+                if 'STREAMING_CONFIG' in scenario_content:
+                    start = scenario_content.find('STREAMING_CONFIG = {')
+                    if start != -1:
+                        # Trouver la fin du dictionnaire
+                        brace_count = 0
+                        end = start
+                        for i, char in enumerate(scenario_content[start:]):
+                            if char == '{':
+                                brace_count += 1
+                            elif char == '}':
+                                brace_count -= 1
+                                if brace_count == 0:
+                                    end = start + i + 1
+                                    break
+                        
+                        config_section = scenario_content[start:end]
+                        context_parts.append("CONFIGURATION STREAMING:")
+                        context_parts.append(config_section)
+                
+                # Extraire les commentaires de flow
+                lines = scenario_content.split('\n')
+                flow_comments = [line.strip() for line in lines if 
+                               (line.strip().startswith('# ') and 
+                                any(keyword in line.lower() for keyword in 
+                                    ['flow', 'étape', 'qualification', 'lead', 'conversation']))]
+                
+                if flow_comments:
+                    context_parts.append("\nFLOW DE CONVERSATION:")
+                    context_parts.extend(flow_comments)
+                
+                full_context = '\n'.join(context_parts)
+                
+                self.logger.info(f"✅ Contexte scénario complet chargé: {len(full_context)} caractères")
+                return full_context
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ Impossible de charger le contexte scénario: {e}")
+        
+        # Fallback - contexte par défaut
+        return """
+CONTEXTE: Robot d'appel FRANCE PATRIMOINE pour qualification commerciale
+OBJECTIF: Identifier les prospects intéressés par l'optimisation de placements financiers
+FLOW: hello → q1 (placements) → q2 (rendement) → q3 (conseiller) → is_leads (proposition rappel)
+QUALIFICATION: livret A, PEL, assurance-vie, inflation, conseiller bancaire
+"""
+
+    def _load_dynamic_prompts(self) -> Dict[str, Any]:
+        """Charge les prompts dynamiques depuis prompts_config.json"""
+        try:
+            import json
+            import os
+            
+            # Chemin vers prompts_config.json
+            prompts_path = os.path.join(os.path.dirname(__file__), '..', 'prompts_config.json')
+            
+            if os.path.exists(prompts_path):
+                with open(prompts_path, 'r', encoding='utf-8') as f:
+                    prompts_data = json.load(f)
+                
+                self.logger.info(f"✅ Prompts dynamiques chargés: {len(prompts_data)} sections")
+                return prompts_data
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ Impossible de charger les prompts dynamiques: {e}")
+        
+        # Fallback - prompts par défaut
+        return {
+            "company_info": {"name": "France Patrimoine", "tone": "professionnel"},
+            "conversation_style": {"personality": "Thierry", "approach": "Questions simples"},
+            "hybrid_mode_instructions": {"base_rule": "Revenir au scénario principal"}
+        }
+
+    def _build_hybrid_prompt(self, context: str, user_text: str, step: str) -> str:
+        """Construit un prompt hybride avec contexte dynamique"""
+        
+        company = self.dynamic_prompts.get("company_info", {})
+        style = self.dynamic_prompts.get("conversation_style", {})
+        hybrid = self.dynamic_prompts.get("hybrid_mode_instructions", {})
+        
+        hybrid_prompt = f"""Tu es {style.get('personality', 'Thierry')} de {company.get('name', 'France Patrimoine')}.
+
+CONTEXTE ENTREPRISE:
+- Mission: {company.get('mission', 'Optimisation patrimoniale')}
+- Ton: {company.get('tone', 'professionnel et chaleureux')}
+- Style: {style.get('approach', 'Questions courtes et simples')}
+
+SCÉNARIO PRINCIPAL:
+{self.campaign_context}
+
+ÉTAPE ACTUELLE: {step}
+
+RÈGLES HYBRIDES:
+- {hybrid.get('base_rule', 'TOUJOURS revenir au scénario principal')}
+- Digression max: {hybrid.get('max_digression_time', '30 secondes')}
+- Priorité: {hybrid.get('scenario_priority', 'Le scénario reste la trame principale')}
+
+RÉPONSE CLIENT: "{user_text}"
+
+Analyse cette réponse et détermine:
+1. Si c'est une réponse directe au scénario → intent normal
+2. Si c'est une question/objection hors-script → intent "digression" avec contextual_response
+
+Réponds UNIQUEMENT en JSON: {{"intent": "...", "confidence": 0.9, "contextual_response": "...", "return_to_step": "..."}}"""
+
+        return hybrid_prompt
 
     def _initialize_ollama(self):
         """Initialise la connexion Ollama"""
@@ -158,19 +304,21 @@ Intents :
             self.is_available = False
             return False
 
-    def get_intent(self, text: str, context: str = "general") -> Tuple[str, float, Dict[str, Any]]:
+    def get_intent(self, text: str, context: str = "general", step: str = None, hybrid_mode: bool = True) -> Tuple[str, float, Dict[str, Any]]:
         """
-        Analyse l'intention d'un texte
+        Analyse l'intention d'un texte avec mode hybride
         
         Args:
             text: Texte à analyser
             context: Contexte de la conversation (general, greeting, qualification, final_offer)
+            step: Étape actuelle du scénario (pour mode hybride)
+            hybrid_mode: Active le mode hybride (scénario + réponses libres)
             
         Returns:
             Tuple[intent, confidence, metadata]
             intent: string de l'intention détectée
             confidence: score de confiance 0-1
-            metadata: informations supplémentaires
+            metadata: informations supplémentaires + contexte hybride
         """
         start_time = time.time()
         self.stats["total_requests"] += 1
@@ -180,10 +328,15 @@ Intents :
         if not text_clean:
             return "unsure", 0.0, {"method": "empty_text", "latency_ms": 0.0}
         
-        # Tentative Ollama en premier
+        # Tentative Ollama avec mode hybride
         if self.is_available and self.ollama_client:
             try:
-                intent, confidence, metadata = self._get_intent_ollama(text_clean, context)
+                if hybrid_mode and step:
+                    # Mode hybride - analyse contextuelle avancée
+                    intent, confidence, metadata = self._get_intent_hybrid(text_clean, context, step)
+                else:
+                    # Mode classique
+                    intent, confidence, metadata = self._get_intent_ollama(text_clean, context)
                 
                 latency_ms = (time.time() - start_time) * 1000
                 self._update_latency_stats(latency_ms)
@@ -191,12 +344,14 @@ Intents :
                 if intent != "error":
                     self.stats["ollama_success"] += 1
                     metadata.update({
-                        "method": "ollama",
+                        "method": "ollama_hybrid" if hybrid_mode else "ollama",
                         "latency_ms": latency_ms,
-                        "meets_target": latency_ms < config.TARGET_INTENT_LATENCY
+                        "meets_target": latency_ms < config.TARGET_INTENT_LATENCY,
+                        "hybrid_mode": hybrid_mode
                     })
                     
-                    self.logger.debug(f"🧠 Ollama intent: '{text_clean}' → {intent} ({confidence:.2f}) [{latency_ms:.1f}ms]")
+                    mode_label = "🔄 Hybrid" if hybrid_mode else "🧠 Classic"
+                    self.logger.debug(f"{mode_label} Ollama intent: '{text_clean}' → {intent} ({confidence:.2f}) [{latency_ms:.1f}ms]")
                     return intent, confidence, metadata
                     
             except Exception as e:
@@ -279,6 +434,101 @@ Intents :
         except Exception as e:
             self.logger.error(f"❌ Ollama request failed: {e}")
             return "error", 0.0, {"error": str(e)}
+
+    def _get_intent_hybrid(self, text: str, context: str, step: str) -> Tuple[str, float, Dict[str, Any]]:
+        """Analyse hybride avec détection de digressions et réponses contextuelles"""
+        try:
+            # Construire le prompt hybride
+            hybrid_prompt = self._build_hybrid_prompt(context, text, step)
+            
+            # Utiliser Ollama avec le prompt hybride
+            response = self.ollama_client.chat(
+                model=config.OLLAMA_MODEL,
+                messages=[
+                    {"role": "system", "content": hybrid_prompt},
+                    {"role": "user", "content": text}
+                ],
+                options={
+                    "temperature": 0.05,
+                    "top_p": 0.15,
+                    "num_predict": 50,  # Plus long pour réponses hybrides
+                    "stop": ["}"]
+                }
+            )
+            
+            # Parser la réponse JSON hybride
+            content = response['message']['content'].strip()
+            
+            if content.startswith('```json'):
+                content = content.replace('```json', '').replace('```', '').strip()
+            
+            try:
+                result = json.loads(content)
+                intent = result.get("intent", "unsure")
+                confidence = float(result.get("confidence", 0.7))
+                contextual_response = result.get("contextual_response", "")
+                return_to_step = result.get("return_to_step", step)
+                
+                # Validation des intents + nouveau intent "digression"
+                valid_intents = ["affirm", "deny", "callback", "price", "interested", "not_interested", "unsure", "digression"]
+                if intent not in valid_intents:
+                    intent = "unsure"
+                    confidence = 0.5
+                
+                metadata = {
+                    "ollama_response": content,
+                    "context": context,
+                    "step": step,
+                    "hybrid_mode": True
+                }
+                
+                # Ajouter les données de digression si pertinentes
+                if intent == "digression" and contextual_response:
+                    metadata["contextual_response"] = contextual_response
+                    metadata["return_to_step"] = return_to_step
+                    
+                    # Chercher réponse préfabriquée dans prompts_config
+                    predefined_response = self._get_predefined_response(text)
+                    if predefined_response:
+                        metadata["predefined_response"] = predefined_response
+                
+                return intent, confidence, metadata
+                
+            except json.JSONDecodeError as e:
+                self.logger.warning(f"⚠️ Invalid JSON from hybrid mode: {content}")
+                # Fallback sur mode classique
+                return self._get_intent_ollama(text, context)
+                
+        except Exception as e:
+            self.logger.error(f"❌ Hybrid mode failed: {e}")
+            # Fallback sur mode classique
+            return self._get_intent_ollama(text, context)
+
+    def _get_predefined_response(self, user_text: str) -> Optional[str]:
+        """Cherche une réponse préfabriquée pour les questions courantes"""
+        try:
+            contextual_responses = self.dynamic_prompts.get("contextual_responses", {})
+            objection_handling = self.dynamic_prompts.get("objection_handling", {})
+            
+            user_lower = user_text.lower()
+            
+            # Détection par mots-clés
+            if any(word in user_lower for word in ["inflation", "taux", "rendement"]):
+                return contextual_responses.get("inflation_question", "")
+            elif any(word in user_lower for word in ["conseiller", "banque", "bancaire"]):
+                return contextual_responses.get("bank_advisor_question", "")
+            elif any(word in user_lower for word in ["prix", "coût", "cher", "gratuit"]):
+                return objection_handling.get("price_concerns", {}).get("response", "")
+            elif any(word in user_lower for word in ["temps", "occupé", "rapide"]):
+                return objection_handling.get("time_constraints", {}).get("response", "")
+            elif any(word in user_lower for word in ["confiance", "sérieux", "arnaque"]):
+                return objection_handling.get("trust_issues", {}).get("response", "")
+            
+            return None
+            
+        except Exception as e:
+            self.logger.warning(f"⚠️ Error in predefined response lookup: {e}")
+            return None
 
     def _get_intent_fallback(self, text: str, context: str) -> Tuple[str, float, Dict[str, Any]]:
         """Fallback sur analyse par mots-clés"""

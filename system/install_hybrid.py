@@ -1607,6 +1607,12 @@ if __name__ == "__main__":
         # 3. Optimisations système pour streaming temps réel
         self._optimize_system_for_streaming()
         
+        # 4. Configuration TTS avec clonage vocal
+        self._setup_tts_voice_cloning()
+        
+        # 5. Mise à jour des prompts NLP dynamiques
+        self._update_nlp_prompts()
+        
         log("✅ All streaming optimizations applied successfully", "success")
     
     def _optimize_ollama_for_streaming(self):
@@ -1821,6 +1827,60 @@ net.core.netdev_max_backlog = 5000
         log("- AMD hybrid detection")
         
         log("=" * 60, "success")
+
+    def _setup_tts_voice_cloning(self):
+        """Configure le TTS avec clonage vocal pour réponses dynamiques"""
+        log("🎙️ Setting up TTS voice cloning for dynamic responses")
+        
+        try:
+            # Vérifier que les dépendances TTS sont installées
+            result = run_cmd("python3 -c 'import TTS; print(\"TTS available\")'", check=False)
+            if result.returncode != 0:
+                log("📦 Installing TTS dependencies...")
+                run_cmd("pip3 install TTS torch transformers accelerate", timeout=600)
+            
+            # Tester le service TTS
+            tts_test_script = self.project_dir / "services" / "tts_voice_clone.py"
+            if tts_test_script.exists():
+                log("🔧 Testing TTS voice cloning service...")
+                result = run_cmd(f"python3 {tts_test_script}", check=False, timeout=120)
+                if result.returncode == 0:
+                    log("✅ TTS voice cloning service operational")
+                else:
+                    log("⚠️ TTS service needs manual configuration after first run", "warning")
+            
+            log("✅ TTS voice cloning setup completed")
+            
+        except Exception as e:
+            log(f"⚠️ TTS setup warning: {e}", "warning")
+            log("💡 TTS can be configured manually later", "info")
+
+    def _update_nlp_prompts(self):
+        """Met à jour les prompts NLP avec contexte dynamique"""
+        log("🧠 Updating NLP prompts with dynamic context")
+        
+        try:
+            # Vérifier que les fichiers de configuration existent
+            prompts_config = self.project_dir / "prompts_config.json"
+            nlp_service = self.project_dir / "services" / "nlp_intent.py"
+            
+            if not prompts_config.exists():
+                log("⚠️ prompts_config.json not found, will be created at runtime", "warning")
+            
+            if nlp_service.exists():
+                # Tester le chargement des prompts dynamiques
+                test_cmd = f"cd {self.project_dir} && python3 -c 'from services.nlp_intent import intent_engine; print(\"NLP service with dynamic prompts loaded\")'"
+                result = run_cmd(test_cmd, check=False)
+                
+                if result.returncode == 0:
+                    log("✅ NLP service with dynamic prompts operational")
+                else:
+                    log("⚠️ NLP service will be configured at runtime", "warning")
+            
+            log("✅ NLP prompts update completed")
+            
+        except Exception as e:
+            log(f"⚠️ NLP prompts update warning: {e}", "warning")
 
 # Cette fonction existe déjà dans la classe StreamingInstaller comme _apply_streaming_optimizations()
 

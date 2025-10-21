@@ -33,3 +33,11 @@ websocket-client==1.7.0
 # Audio Processing
 librosa==0.10.1
 scipy==1.15.3
+
+# TTS with Voice Cloning (Free)
+TTS==0.22.0
+# torch==2.0.1
+# torchaudio==2.0.2
+transformers==4.35.2
+datasets==2.14.6
+accelerate==0.24.1
