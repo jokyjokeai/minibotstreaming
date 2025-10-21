@@ -307,12 +307,19 @@ class AsteriskInstaller:
             else:
                 log("✅ Existing Asterisk has systemd support")
         
-        # Configuration de base avec pjproject bundled
-        run_cmd(
-            "./configure --with-pjproject-bundled --with-jansson-bundled",
-            "Running configure script",
-            timeout=300
-        )
+        # Fix pkg-config paths pour PJSIP (résout "No objects found")
+        log("🔧 Setting up PKG_CONFIG_PATH for PJSIP compatibility")
+        os.environ['PKG_CONFIG_PATH'] = '/usr/lib/pkgconfig:/usr/lib64/pkgconfig:/usr/local/lib/pkgconfig'
+        run_cmd("export PKG_CONFIG_PATH=/usr/lib/pkgconfig:/usr/lib64/pkgconfig:/usr/local/lib/pkgconfig", check=False)
+        
+        # Configuration de base avec pjproject bundled + libdir fix
+        configure_cmd = "./configure --with-pjproject-bundled --with-jansson-bundled"
+        
+        # Fix pour systèmes 64-bit (CentOS/Ubuntu)
+        if os.path.exists("/usr/lib64"):
+            configure_cmd += " --libdir=/usr/lib64"
+            
+        run_cmd(configure_cmd, "Running configure script with PJSIP fixes", timeout=300)
         
         # Menu selection automatique
         self.setup_menuselect()
