@@ -225,13 +225,48 @@ class AsteriskInstaller:
         else:
             log("⚠️ OS not supported for automatic dependency installation", "warning")
     
+    def clean_previous_installation(self):
+        """Nettoyage complet de l'installation Asterisk précédente"""
+        log("🧹 Complete cleanup of previous Asterisk installation")
+        
+        # Arrêter et désactiver le service
+        run_cmd("systemctl stop asterisk", check=False)
+        run_cmd("systemctl disable asterisk", check=False)
+        
+        # Tuer tous processus Asterisk
+        run_cmd("pkill -9 asterisk", check=False)
+        
+        # Supprimer binaires
+        run_cmd("rm -f /usr/sbin/asterisk", check=False)
+        run_cmd("rm -f /usr/sbin/astgenkey", check=False) 
+        run_cmd("rm -f /usr/sbin/astdb2sqlite3", check=False)
+        
+        # Supprimer configs (sauvegarde d'abord)
+        run_cmd("rm -rf /etc/asterisk.backup", check=False)
+        run_cmd("mv /etc/asterisk /etc/asterisk.backup", check=False)
+        
+        # Supprimer données et logs
+        run_cmd("rm -rf /var/lib/asterisk", check=False)
+        run_cmd("rm -rf /var/log/asterisk", check=False)
+        run_cmd("rm -rf /var/spool/asterisk", check=False)
+        run_cmd("rm -rf /var/run/asterisk", check=False)
+        
+        # Supprimer service systemd
+        run_cmd("rm -f /etc/systemd/system/asterisk.service", check=False)
+        run_cmd("systemctl daemon-reload", check=False)
+        
+        log("✅ Previous installation cleaned")
+
     def download_asterisk(self):
         """Télécharge Asterisk 22"""
         log(f"📥 Downloading Asterisk {self.asterisk_version}")
         
-        # Supprimer installation précédente
+        # Nettoyage complet d'abord
+        self.clean_previous_installation()
+        
+        # Supprimer code source précédent
         if os.path.exists(self.install_dir):
-            run_cmd(f"rm -rf {self.install_dir}", "Removing previous installation")
+            run_cmd(f"rm -rf {self.install_dir}", "Removing previous source installation")
         
         # Télécharger Asterisk 22.6.0 LTS stable (version exacte pour streaming/IA)
         exact_version = "22.6.0"
