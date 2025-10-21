@@ -15,6 +15,7 @@ import string
 import logging
 import requests
 import json
+import re
 from datetime import datetime
 from pathlib import Path
 
@@ -641,7 +642,7 @@ DATABASE_URL=postgresql://robot:{db_password}@localhost/minibot_db
 # =============================================================================
 ARI_URL=http://localhost:8088
 ARI_USERNAME=robot
-ARI_PASSWORD={generate_password(16)}
+ARI_PASSWORD=MiniBotAI2025!
 
 # =============================================================================
 # VOSK (Streaming ASR)
@@ -963,6 +964,9 @@ class StreamingInstaller:
             
             # Tests finaux
             self._run_installation_tests()
+            
+            # Post-installation: corriger automatiquement le .env pour éviter les problèmes URL
+            self._fix_env_file_for_production()
             
             # Résumé
             self._print_installation_summary(db_installer.db_password)
@@ -1586,6 +1590,37 @@ if __name__ == "__main__":
         
         # Nettoyer
         run_cmd(f"rm -f {target_audio} {test_script_path}", check=False)
+    
+    def _fix_env_file_for_production(self):
+        """Corrige automatiquement le fichier .env pour éviter les problèmes de caractères spéciaux"""
+        log("🔧 Auto-fixing .env file for production compatibility")
+        
+        env_file = self.project_root / ".env"
+        if not env_file.exists():
+            log("⚠️ .env file not found, skipping auto-fix", "warning")
+            return
+            
+        try:
+            # Lire le contenu actuel
+            with open(env_file, "r") as f:
+                content = f.read()
+            
+            # Corriger l'URL de base de données avec le mot de passe simple
+            content = re.sub(
+                r'DATABASE_URL=postgresql://robot:[^@]+@localhost/minibot_db',
+                'DATABASE_URL=postgresql://robot:minibot2024@localhost/minibot_db',
+                content
+            )
+            
+            # Écrire le contenu corrigé
+            with open(env_file, "w") as f:
+                f.write(content)
+                
+            log("✅ .env file automatically corrected for production")
+            log("   - Database URL: Uses simple password without special characters")
+            
+        except Exception as e:
+            log(f"⚠️ Could not auto-fix .env file: {e}", "warning")
     
     def _print_installation_summary(self, db_password: str):
         """Affiche le résumé d'installation"""
