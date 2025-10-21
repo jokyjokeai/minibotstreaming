@@ -330,6 +330,14 @@ class AsteriskInstaller:
         
         run_cmd("make install", "Installing binaries", timeout=300)
         run_cmd("make samples", "Installing sample configs", timeout=60)
+        
+        # CRITIQUE: Supprimer immédiatement les configs corrompues installées par "make samples"
+        log("🗑️ Removing corrupted default configs installed by 'make samples'")
+        run_cmd("rm -f /etc/asterisk/extensions.conf", check=False)
+        run_cmd("rm -f /etc/asterisk/extensions.ael", check=False) 
+        run_cmd("rm -f /etc/asterisk/users.conf", check=False)
+        run_cmd("rm -f /etc/asterisk/pjsip.conf", check=False)
+        
         run_cmd("make progdocs", "Installing documentation", check=False, timeout=300)
     
     def configure_service(self):
@@ -842,24 +850,19 @@ class StreamingInstaller:
         """Configure l'enregistrement SIP"""
         log("📞 Setting up SIP configuration", "success")
         
-        # Vérifier si PJSIP existe déjà
-        if os.path.exists("/etc/asterisk/pjsip.conf"):
-            log("📞 Configuration SIP existante détectée")
-            response = input("Voulez-vous garder la config SIP existante ? [y/N]: ").strip().lower()
-            if response in ['y', 'yes', 'oui']:
-                log("✅ Configuration SIP existante conservée")
-                return
+        # AUTOMATIQUE: toujours régénérer les configs pour éviter corruptions
+        log("📞 Régénération automatique des configurations SIP")
                 
-        # Demander les informations SIP
-        log("\n" + "="*60)
-        log("📞 CONFIGURATION SIP REQUISE")
-        log("="*60)
-        log("Pour que MiniBotPanel puisse passer des appels,")
-        log("vous devez configurer un trunk SIP.")
-        log("")
-        
-        # Collecter les informations
-        sip_config = self._collect_sip_info()
+        # Configuration SIP par défaut (non-interactive)
+        log("📞 Utilisation configuration SIP par défaut")
+        sip_config = {
+            'host': 'sip.provider.com',
+            'username': 'user',
+            'password': 'pass', 
+            'port': '5060',
+            'trunk_name': 'provider',
+            'context': 'from-internal'
+        }
         
         # Générer la configuration Asterisk
         self._generate_asterisk_sip_config(sip_config)
@@ -898,12 +901,7 @@ class StreamingInstaller:
         """Génère la configuration SIP Asterisk"""
         log("📝 Generating Asterisk SIP configuration")
         
-        # CRITIQUE: Supprimer TOUTES les anciennes configs qui causent les erreurs
-        log("🗑️ Removing ALL old Asterisk configurations...")
-        run_cmd("rm -f /etc/asterisk/extensions.conf", check=False)
-        run_cmd("rm -f /etc/asterisk/extensions.ael", check=False)
-        run_cmd("rm -f /etc/asterisk/pjsip.conf", check=False)
-        run_cmd("rm -f /etc/asterisk/users.conf", check=False)
+        # Les configs corrompues ont déjà été supprimées après "make samples"
         
         # Configuration PJSIP (Asterisk 22)
         pjsip_conf = f"""
