@@ -752,6 +752,9 @@ class StreamingInstaller:
             # Installation des dépendances Python
             self._install_python_dependencies()
             
+            # Configuration SIP
+            self._setup_sip_configuration()
+            
             # Tests finaux
             self._run_installation_tests()
             
@@ -822,6 +825,214 @@ class StreamingInstaller:
         
         log("✅ Python dependencies installed")
     
+    def _setup_sip_configuration(self):
+        """Configure l'enregistrement SIP"""
+        log("📞 Setting up SIP configuration", "success")
+        
+        # Demander les informations SIP
+        log("\n" + "="*60)
+        log("📞 CONFIGURATION SIP REQUISE")
+        log("="*60)
+        log("Pour que MiniBotPanel puisse passer des appels,")
+        log("vous devez configurer un trunk SIP.")
+        log("")
+        
+        # Collecter les informations
+        sip_config = self._collect_sip_info()
+        
+        # Générer la configuration Asterisk
+        self._generate_asterisk_sip_config(sip_config)
+        
+        # Démarrer Asterisk si pas déjà fait
+        self._start_asterisk_service()
+        
+        # Vérifier l'enregistrement
+        self._verify_sip_registration(sip_config)
+        
+        log("✅ SIP configuration completed")
+    
+    def _collect_sip_info(self):
+        """Collecte les informations SIP de l'utilisateur"""
+        import getpass
+        
+        log("📝 Veuillez entrer vos informations SIP:")
+        
+        sip_config = {}
+        
+        # Seulement les informations essentielles
+        sip_config['host'] = input("🌐 Serveur SIP (ex: sip.ovhcloud.com): ").strip()
+        sip_config['username'] = input("👤 Nom d'utilisateur SIP: ").strip()
+        sip_config['password'] = getpass.getpass("🔐 Mot de passe SIP: ").strip()
+        
+        # Valeurs automatiques (pas de questions)
+        sip_config['port'] = "5060"
+        sip_config['trunk_name'] = "provider"
+        sip_config['context'] = "from-internal"
+        
+        log(f"📞 Configuration automatique: Port {sip_config['port']}, Trunk '{sip_config['trunk_name']}'")
+        
+        return sip_config
+    
+    def _generate_asterisk_sip_config(self, sip_config):
+        """Génère la configuration SIP Asterisk"""
+        log("📝 Generating Asterisk SIP configuration")
+        
+        # Configuration PJSIP (Asterisk 22)
+        pjsip_conf = f"""
+; =============================================================================
+; PJSIP Configuration for MiniBotPanel v2 - Generated {datetime.now().isoformat()}
+; =============================================================================
+
+[transport-udp]
+type=transport
+protocol=udp
+bind=0.0.0.0:{sip_config['port']}
+
+; Trunk SIP Provider
+[{sip_config['trunk_name']}]
+type=endpoint
+context={sip_config['context']}
+outbound_auth={sip_config['trunk_name']}_auth
+aors={sip_config['trunk_name']}_aor
+allow=!all,alaw,ulaw,g722
+
+[{sip_config['trunk_name']}_auth]
+type=auth
+auth_type=userpass
+username={sip_config['username']}
+password={sip_config['password']}
+
+[{sip_config['trunk_name']}_aor]
+type=aor
+contact=sip:{sip_config['host']}:{sip_config['port']}
+
+[{sip_config['trunk_name']}_identify]
+type=identify
+endpoint={sip_config['trunk_name']}
+match={sip_config['host']}
+
+; Registration
+[{sip_config['trunk_name']}_reg]
+type=registration
+outbound_auth={sip_config['trunk_name']}_auth
+server_uri=sip:{sip_config['host']}:{sip_config['port']}
+client_uri=sip:{sip_config['username']}@{sip_config['host']}
+retry_interval=60
+"""
+        
+        # Écrire la configuration
+        with open("/etc/asterisk/pjsip.conf", "w") as f:
+            f.write(pjsip_conf)
+        
+        # Configuration des extensions (dialplan)
+        extensions_conf = f"""
+; =============================================================================
+; Extensions for MiniBotPanel v2 - Generated {datetime.now().isoformat()}
+; =============================================================================
+
+[{sip_config['context']}]
+; Appels sortants via le trunk
+exten => _X.,1,NoOp(Outgoing call to ${{EXTEN}})
+ same => n,Dial(PJSIP/${{EXTEN}}@{sip_config['trunk_name']},60)
+ same => n,Hangup()
+
+; Context pour les appels MiniBotPanel
+[minibot-calls]
+exten => _X.,1,NoOp(MiniBotPanel outgoing call to ${{EXTEN}})
+ same => n,Set(CHANNEL(hangup_handler_push)=hangup-handler,s,1)
+ same => n,AMD({config.AMD_INITIAL_SILENCE},{config.AMD_GREETING},{config.AMD_AFTER_GREETING_SILENCE},{config.AMD_TOTAL_ANALYSIS_TIME},{config.AMD_MIN_WORD_LENGTH},{config.AMD_BETWEEN_WORDS_SILENCE})
+ same => n,Set(AMD_STATUS=${{AMDSTATUS}})
+ same => n,Set(AMD_CAUSE=${{AMDCAUSE}})
+ same => n,Stasis(minibot,${{EXTEN}})
+ same => n,Hangup()
+
+[hangup-handler]
+exten => s,1,NoOp(Call ended)
+ same => n,Return()
+"""
+        
+        with open("/etc/asterisk/extensions.conf", "w") as f:
+            f.write(extensions_conf)
+        
+        log("✅ Asterisk SIP configuration generated")
+    
+    def _start_asterisk_service(self):
+        """Démarre le service Asterisk"""
+        log("🚀 Starting Asterisk service")
+        
+        try:
+            # Recharger la configuration
+            run_cmd("systemctl restart asterisk", "Restarting Asterisk", timeout=30)
+            time.sleep(5)  # Attendre le démarrage
+            
+            # Vérifier que c'est démarré
+            run_cmd("systemctl is-active asterisk", check=True)
+            log("✅ Asterisk service started successfully")
+            
+        except Exception as e:
+            log(f"❌ Failed to start Asterisk: {e}", "error")
+            log("📋 Check Asterisk logs: sudo journalctl -u asterisk", "error")
+            raise
+    
+    def _verify_sip_registration(self, sip_config):
+        """Vérifie l'enregistrement SIP"""
+        log("🔍 Verifying SIP registration")
+        
+        max_attempts = 6
+        for attempt in range(1, max_attempts + 1):
+            log(f"📞 Checking registration (attempt {attempt}/{max_attempts})")
+            
+            try:
+                # Vérifier l'enregistrement PJSIP
+                result = run_cmd(
+                    f'asterisk -rx "pjsip show registrations"',
+                    check=False,
+                    timeout=10
+                )
+                
+                if result.returncode == 0 and sip_config['trunk_name'] in result.stdout:
+                    # Chercher le statut
+                    if "Registered" in result.stdout:
+                        log("✅ SIP registration successful!", "success")
+                        log(f"📞 Trunk '{sip_config['trunk_name']}' is registered")
+                        return True
+                    elif "Unregistered" in result.stdout:
+                        log(f"⚠️ Registration failed - attempt {attempt}", "warning")
+                    else:
+                        log(f"🔄 Registration in progress - attempt {attempt}")
+                else:
+                    log(f"⚠️ No registration info found - attempt {attempt}")
+                
+                if attempt < max_attempts:
+                    log("⏱️ Waiting 10 seconds before retry...")
+                    time.sleep(10)
+                    
+            except Exception as e:
+                log(f"❌ Error checking registration: {e}")
+                if attempt < max_attempts:
+                    time.sleep(10)
+        
+        # Si on arrive ici, l'enregistrement a échoué
+        log("❌ SIP registration failed after all attempts", "error")
+        log("🔧 Please check:")
+        log("  - SIP credentials are correct")
+        log("  - Firewall allows SIP traffic (UDP 5060)")
+        log("  - Network connectivity to SIP provider")
+        log("  - Asterisk logs: sudo tail -f /var/log/asterisk/messages")
+        
+        # Afficher les détails pour debug
+        try:
+            result = run_cmd('asterisk -rx "pjsip show registrations"', check=False)
+            if result.stdout:
+                log("📋 Current registrations:")
+                for line in result.stdout.split('\n'):
+                    if line.strip():
+                        log(f"   {line}")
+        except:
+            pass
+            
+        return False
+    
     def _run_installation_tests(self):
         """Lance des tests de validation"""
         log("🧪 Running installation tests")
@@ -867,10 +1078,124 @@ class StreamingInstaller:
         else:
             log("❌ Vosk models: Missing", "error")
         
+        # Test SIP registration
+        tests_total += 1
+        try:
+            result = run_cmd('asterisk -rx "pjsip show registrations"', check=False)
+            if result.returncode == 0 and "Registered" in result.stdout:
+                log("✅ SIP Registration: Active")
+                tests_passed += 1
+            else:
+                log("❌ SIP Registration: Failed", "error")
+        except:
+            log("❌ SIP Registration: Failed", "error")
+        
+        # Test Vosk avec fichier audio de test
+        tests_total += 1
+        try:
+            self._test_vosk_recognition()
+            log("✅ Vosk Recognition: Working")
+            tests_passed += 1
+        except Exception as e:
+            log(f"❌ Vosk Recognition: Failed - {e}", "error")
+        
         log(f"📊 Tests: {tests_passed}/{tests_total} passed")
         
         if tests_passed < tests_total:
             log("⚠️ Some tests failed - check configuration", "warning")
+    
+    def _test_vosk_recognition(self):
+        """Test Vosk avec le fichier audio de test"""
+        log("🎤 Testing Vosk speech recognition")
+        
+        # Chemin vers le fichier audio de test
+        test_audio_file = self.project_dir / "audio" / "test_audio.wav"
+        
+        if not test_audio_file.exists():
+            raise Exception(f"Test audio file not found: {test_audio_file}")
+        
+        # Copier le fichier vers l'installation
+        target_audio = Path("/opt/minibot/test_audio.wav")
+        run_cmd(f"cp {test_audio_file} {target_audio}", "Copying test audio file")
+        
+        # Créer un script Python de test Vosk
+        test_script = f"""
+import json
+import wave
+from vosk import Model, KaldiRecognizer
+
+def test_vosk():
+    # Charger le modèle
+    model = Model("/opt/minibot/models/vosk-fr")
+    rec = KaldiRecognizer(model, 16000)
+    
+    # Ouvrir le fichier audio
+    wf = wave.open("{target_audio}", "rb")
+    
+    # Transcrire
+    results = []
+    while True:
+        data = wf.readframes(4000)
+        if len(data) == 0:
+            break
+        if rec.AcceptWaveform(data):
+            result = json.loads(rec.Result())
+            if result.get("text"):
+                results.append(result["text"])
+    
+    # Résultat final
+    final_result = json.loads(rec.FinalResult())
+    if final_result.get("text"):
+        results.append(final_result["text"])
+    
+    # Afficher le résultat
+    transcription = " ".join(results).strip()
+    print(f"TRANSCRIPTION: {{transcription}}")
+    
+    if transcription:
+        print("SUCCESS: Vosk recognition working")
+        return True
+    else:
+        print("ERROR: No transcription generated")
+        return False
+
+if __name__ == "__main__":
+    try:
+        result = test_vosk()
+        exit(0 if result else 1)
+    except Exception as e:
+        print(f"ERROR: {{e}}")
+        exit(1)
+"""
+        
+        # Écrire et exécuter le script de test
+        test_script_path = Path("/tmp/test_vosk.py")
+        with open(test_script_path, "w") as f:
+            f.write(test_script)
+        
+        # Exécuter le test
+        result = run_cmd(f"cd /opt/minibot && python3 {test_script_path}", 
+                        "Running Vosk recognition test", 
+                        timeout=30, 
+                        check=False)
+        
+        if result.returncode == 0:
+            # Extraire la transcription du résultat
+            for line in result.stdout.split('\n'):
+                if line.startswith("TRANSCRIPTION:"):
+                    transcription = line.replace("TRANSCRIPTION:", "").strip()
+                    log(f"🎤 Vosk transcription: '{transcription}'")
+                    break
+            
+            if "SUCCESS" in result.stdout:
+                log("✅ Vosk recognition test passed")
+            else:
+                raise Exception("No transcription generated")
+        else:
+            raise Exception(f"Test failed: {result.stderr}")
+        
+        # Nettoyer
+        run_cmd(f"rm -f {target_audio} {test_script_path}", check=False)
     
     def _print_installation_summary(self, db_password: str):
         """Affiche le résumé d'installation"""
