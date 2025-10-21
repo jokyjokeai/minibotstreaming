@@ -331,12 +331,8 @@ class AsteriskInstaller:
         run_cmd("make install", "Installing binaries", timeout=300)
         run_cmd("make samples", "Installing sample configs", timeout=60)
         
-        # CRITIQUE: Supprimer immédiatement les configs corrompues installées par "make samples"
-        log("🗑️ Removing corrupted default configs installed by 'make samples'")
-        run_cmd("rm -f /etc/asterisk/extensions.conf", check=False)
-        run_cmd("rm -f /etc/asterisk/extensions.ael", check=False) 
-        run_cmd("rm -f /etc/asterisk/users.conf", check=False)
-        run_cmd("rm -f /etc/asterisk/pjsip.conf", check=False)
+        # NOUVELLE APPROCHE: Garder les configs de base et merger les nôtres
+        log("📋 Keeping base configs and will merge our configurations later")
         
         run_cmd("make progdocs", "Installing documentation", check=False, timeout=300)
     
@@ -675,12 +671,23 @@ bindport=8088
         log("✅ Asterisk configurations installed")
     
     def _copy_config(self, source_name: str, dest_path: str):
-        """Copie un fichier de configuration"""
+        """Merge notre configuration dans le fichier existant"""
         source_path = self.config_dir / source_name
         
         if source_path.exists():
-            run_cmd(f"cp {source_path} {dest_path}")
-            log(f"📋 Copied {source_name} → {dest_path}")
+            # NOUVELLE APPROCHE: Append au lieu de remplacer
+            log(f"📋 Merging {source_name} → {dest_path}")
+            
+            # Ajouter séparateur et nos configs à la fin du fichier existant
+            with open(dest_path, "a") as dest_file:
+                dest_file.write(f"\n\n; ========================================\n")
+                dest_file.write(f"; MiniBotPanel v2 Configuration - {source_name}\n") 
+                dest_file.write(f"; ========================================\n")
+                
+                with open(source_path, "r") as source_file:
+                    dest_file.write(source_file.read())
+                    
+            log(f"✅ Merged {source_name} into existing {dest_path}")
         else:
             log(f"⚠️ Config file not found: {source_path}", "warning")
     
