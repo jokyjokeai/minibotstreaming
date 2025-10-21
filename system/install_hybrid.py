@@ -381,7 +381,8 @@ User=asterisk
 Group=asterisk
 Environment=HOME=/var/lib/asterisk
 WorkingDirectory=/var/lib/asterisk
-ExecStart=/usr/sbin/asterisk -f -C /etc/asterisk/asterisk.conf
+PIDFile=/var/run/asterisk/asterisk.pid
+ExecStart=/usr/sbin/asterisk -C /etc/asterisk/asterisk.conf
 ExecStop=/usr/sbin/asterisk -rx 'core stop now'
 ExecReload=/usr/sbin/asterisk -rx 'core reload'
 # Safe temp directories
