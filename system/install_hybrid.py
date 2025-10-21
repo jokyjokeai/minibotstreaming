@@ -958,8 +958,11 @@ client_uri=sip:{sip_config['username']}@{sip_config['host']}
 retry_interval=60
 """
         
-        # Écrire la configuration
-        with open("/etc/asterisk/pjsip.conf", "w") as f:
+        # NOUVELLE APPROCHE: Append la config SIP au fichier existant
+        with open("/etc/asterisk/pjsip.conf", "a") as f:
+            f.write("\n\n; ========================================\n")
+            f.write("; MiniBotPanel v2 SIP Configuration\n")
+            f.write("; ========================================\n")
             f.write(pjsip_conf)
         
         # Configuration des extensions (dialplan)
@@ -989,7 +992,11 @@ exten => s,1,NoOp(Call ended)
  same => n,Return()
 """
         
-        with open("/etc/asterisk/extensions.conf", "w") as f:
+        # NOUVELLE APPROCHE: Append la config extensions au fichier existant  
+        with open("/etc/asterisk/extensions.conf", "a") as f:
+            f.write("\n\n; ========================================\n")
+            f.write("; MiniBotPanel v2 Extensions Configuration\n") 
+            f.write("; ========================================\n")
             f.write(extensions_conf)
         
         # Configuration asterisk.conf CRITIQUE pour transmit_silence
@@ -1012,7 +1019,11 @@ astsbindir => /usr/sbin
 transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
 """
         
-        with open("/etc/asterisk/asterisk.conf", "w") as f:
+        # NOUVELLE APPROCHE: Append la config asterisk.conf au fichier existant
+        with open("/etc/asterisk/asterisk.conf", "a") as f:
+            f.write("\n\n; ========================================\n")
+            f.write("; MiniBotPanel v2 Asterisk Configuration\n")
+            f.write("; ========================================\n") 
             f.write(asterisk_conf)
         
         log("✅ Asterisk SIP configuration + transmit_silence generated")
