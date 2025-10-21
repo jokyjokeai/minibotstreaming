@@ -975,7 +975,30 @@ exten => s,1,NoOp(Call ended)
         with open("/etc/asterisk/extensions.conf", "w") as f:
             f.write(extensions_conf)
         
-        log("✅ Asterisk SIP configuration generated")
+        # Configuration asterisk.conf CRITIQUE pour transmit_silence
+        asterisk_conf = f"""[directories](!)
+astcachedir => /var/cache/asterisk
+astetcdir => /etc/asterisk
+astmoddir => /usr/lib/asterisk/modules
+astvarlibdir => /var/lib/asterisk
+astdbdir => /var/lib/asterisk
+astkeydir => /var/lib/asterisk
+astdatadir => /var/lib/asterisk
+astagidir => /var/lib/asterisk/agi-bin
+astspooldir => /var/spool/asterisk
+astrundir => /var/run/asterisk
+astlogdir => /var/log/asterisk
+astsbindir => /usr/sbin
+
+[options]
+; CRITIQUE: transmit_silence DOIT être activé pour l'enregistrement
+transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
+"""
+        
+        with open("/etc/asterisk/asterisk.conf", "w") as f:
+            f.write(asterisk_conf)
+        
+        log("✅ Asterisk SIP configuration + transmit_silence generated")
     
     def _start_asterisk_service(self):
         """Démarre le service Asterisk"""
