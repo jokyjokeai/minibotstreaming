@@ -1170,6 +1170,12 @@ match={sip_config['host']}
         with open("/etc/asterisk/pjsip.conf", "w") as f:
             f.write(pjsip_conf)
         
+        # FIX CRITIQUE: Corriger les permissions immédiatement (résout "No objects found")
+        log("🔧 Fixing PJSIP file permissions (critical for object loading)")
+        run_cmd("chown asterisk:asterisk /etc/asterisk/pjsip.conf", check=False)
+        run_cmd("chmod 644 /etc/asterisk/pjsip.conf", check=False)
+        run_cmd("chown -R asterisk:asterisk /etc/asterisk/", check=False)
+        
         # Configuration des extensions (dialplan)
         extensions_conf = f"""
 ; =============================================================================
