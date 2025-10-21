@@ -35,7 +35,9 @@ class Colors:
 
 def setup_logging():
     """Configure le système de logging"""
-    log_dir = Path("logs")
+    # Créer le répertoire logs dans le répertoire du projet
+    project_dir = Path(__file__).parent.parent
+    log_dir = project_dir / "logs"
     log_dir.mkdir(exist_ok=True)
     
     log_file = log_dir / f"installation_streaming_{datetime.now().strftime('%Y%m%d_%H%M%S')}.log"
@@ -525,7 +527,8 @@ class ConfigManager:
     """Gestionnaire de configuration streaming"""
     
     def __init__(self):
-        self.project_root = Path.cwd()
+        # Répertoire du projet MiniBotPanel (parent du répertoire system)
+        self.project_root = Path(__file__).parent.parent
         self.config_dir = self.project_root / "asterisk-configs"
         
     def setup_configs(self, db_password: str):
@@ -620,9 +623,9 @@ SOUNDS_PATH=/var/lib/asterisk/sounds/minibot
 # LOGS
 # =============================================================================
 LOG_LEVEL=INFO
-LOG_FILE=logs/robot.log
-STREAMING_LOG_FILE=logs/streaming.log
-AMD_LOG_FILE=logs/amd.log
+LOG_FILE=/opt/minibot/logs/robot.log
+STREAMING_LOG_FILE=/opt/minibot/logs/streaming.log
+AMD_LOG_FILE=/opt/minibot/logs/amd.log
 
 # =============================================================================
 # API
@@ -711,6 +714,8 @@ class StreamingInstaller:
     def __init__(self):
         self.system_info = SystemInfo()
         self.log_file = setup_logging()
+        # Répertoire du projet MiniBotPanel (parent du répertoire system)
+        self.project_dir = Path(__file__).parent.parent
         
     def run_installation(self):
         """Lance l'installation complète"""
@@ -801,15 +806,16 @@ class StreamingInstaller:
         """Installe les dépendances Python"""
         log("🐍 Installing Python dependencies")
         
-        # Vérifier requirements.txt
-        requirements_file = Path("requirements.txt")
+        # Vérifier requirements.txt dans le répertoire du projet
+        requirements_file = self.project_dir / "requirements.txt"
         if not requirements_file.exists():
             log("❌ requirements.txt not found", "error")
+            log(f"📂 Looking for: {requirements_file}", "error")
             raise Exception("requirements.txt missing")
         
-        # Installation avec pip
+        # Installation avec pip (utiliser le chemin absolu)
         run_cmd(
-            "pip3 install -r requirements.txt",
+            f"pip3 install -r {requirements_file}",
             "Installing Python packages",
             timeout=1200
         )
