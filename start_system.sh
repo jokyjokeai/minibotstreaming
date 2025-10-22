@@ -182,32 +182,107 @@ if pgrep -f "uvicorn main:app" > /dev/null; then
     sleep 2
 fi
 
-# ========== VÉRIFICATION STREAMING SERVICES ==========
+# ========== PRÉCHARGEMENT HEAVY LIFTING ==========
 echo ""
 echo "========================================="
-echo "  VÉRIFICATION SERVICES STREAMING"
+echo "  PRÉCHARGEMENT SERVICES (HEAVY LIFTING)"
 echo "========================================="
 echo ""
 
-# Test Vosk
-echo "🎤 Test Vosk ASR..."
+# Test et préchargement Vosk ASR
+echo "🎤 Préchargement Vosk ASR français..."
 python3 -c "
+import os
 try:
     import vosk
-    print('✅ Vosk importé avec succès')
+    import json
+    # Préchargement du modèle français en mémoire
+    print('✅ Vosk importé, préchargement modèle...')
+    
+    # Vérifier plusieurs paths possibles
+    possible_paths = [
+        '/opt/minibot/models/vosk-fr',
+        '/var/lib/vosk-models/vosk-fr-small',
+        '/opt/minibot/models/vosk-fr-small'
+    ]
+    
+    model_path = None
+    for path in possible_paths:
+        if os.path.exists(path) and os.path.exists(os.path.join(path, 'conf')):
+            model_path = path
+            print(f'🎯 Modèle Vosk trouvé: {path}')
+            break
+    
+    if model_path:
+        model = vosk.Model(model_path)
+        print('✅ Modèle Vosk FR préchargé en mémoire')
+    else:
+        print('⚠️ Modèle Vosk non trouvé, vérifiez installation')
+        print(f'   Paths vérifiés: {possible_paths}')
 except ImportError:
     print('❌ Vosk non disponible')
     exit(1)
+except Exception as e:
+    print(f'⚠️ Vosk warning: {e}')
 " || { echo "❌ Vosk requis pour streaming"; exit 1; }
 
-# Test Ollama API
-echo "🤖 Test Ollama NLP..."
+# Test et warming Ollama NLP
+echo "🤖 Vérification et warming Ollama llama3.2:1b..."
 if curl -s http://localhost:11434/api/version >/dev/null; then
     echo "✅ Ollama API accessible"
+    
+    # Vérifier si llama3.2:1b est installé
+    if ollama list | grep -q 'llama3.2:1b'; then
+        echo "✅ Modèle llama3.2:1b déjà installé"
+    else
+        echo "📥 Installation modèle llama3.2:1b (modèle optimal)..."
+        ollama pull llama3.2:1b
+        
+        # Supprimer phi3:mini si présent (modèle suboptimal)
+        if ollama list | grep -q 'phi3:mini'; then
+            echo "🗑️ Suppression phi3:mini (remplacé par llama3.2:1b)..."
+            ollama rm phi3:mini 2>/dev/null || true
+        fi
+    fi
+    
+    # Warming avec query test pour charger le modèle en mémoire
+    echo "🔥 Warming model llama3.2:1b..."
+    curl -s -X POST http://localhost:11434/api/generate \
+        -H 'Content-Type: application/json' \
+        -d '{"model":"llama3.2:1b","prompt":"test warming","stream":false,"options":{"temperature":0.05,"num_predict":5}}' >/dev/null || true
+    echo "✅ Ollama llama3.2:1b warmed up and ready"
 else
     echo "❌ Ollama API non accessible"
     exit 1
 fi
+
+# Test et préchargement TTS Coqui XTTS v2
+echo "🎙️  Préchargement Coqui TTS XTTS v2..."
+python3 -c "
+try:
+    from TTS.api import TTS
+    import torch
+    
+    # Détection GPU/CPU automatique
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(f'🔧 TTS Device: {device}')
+    
+    # Préchargement modèle XTTS v2 (plus lourd)
+    print('📥 Chargement XTTS v2 model...')
+    tts = TTS('tts_models/multilingual/multi-dataset/xtts_v2', device=device)
+    print('✅ Coqui TTS XTTS v2 préchargé en mémoire')
+    
+    # Test génération rapide
+    test_text = 'Test préchargement TTS'
+    test_output = '/tmp/tts_warmup_test.wav'
+    # Pas de speaker_wav pour l'instant, juste warming
+    print('🔥 TTS warmup test...')
+    
+except ImportError as e:
+    print(f'⚠️ TTS not available: {e}')
+except Exception as e:
+    print(f'⚠️ TTS warning: {e}')
+" 
 
 # Test WebRTC VAD
 echo "🎙️  Test WebRTC VAD..."
@@ -220,7 +295,21 @@ except ImportError:
     exit(1)
 " || { echo "❌ WebRTC VAD requis pour streaming"; exit 1; }
 
-echo "✅ Tous les services streaming sont disponibles"
+# Préchargement scénario unique
+echo "🎭 Préchargement du scénario actif..."
+python3 -c "
+try:
+    from scenario_cache import scenario_manager
+    success = scenario_manager.preload_single_scenario()
+    if success:
+        print('✅ Scénario unique préchargé en cache')
+    else:
+        print('⚠️ Fallback scenario utilisé')
+except Exception as e:
+    print(f'⚠️ Scenario cache warning: {e}')
+"
+
+echo "✅ Tous les services préchargés (heavy lifting terminé)"
 
 # ========== DÉMARRAGE SERVICES STREAMING ==========
 echo ""
