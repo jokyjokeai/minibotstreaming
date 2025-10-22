@@ -55,6 +55,11 @@ class ScenarioStep:
         self.tts_enabled = False
         self.interruption_handling = "continue"  # continue, restart, ignore
         
+        # Logique "Is Leads" pour qualification
+        self.is_leads_qualifying = False  # Cette question détermine si c'est un lead
+        self.required_intent_for_leads = None  # "Positif" ou "Négatif" requis
+        self.on_leads_fail_goto = "close_echec"  # Où aller si qualification échoue
+        
     def to_dict(self) -> Dict[str, Any]:
         return {
             "barge_in_enabled": self.barge_in_enabled,
@@ -65,7 +70,10 @@ class ScenarioStep:
             "variables": self.variables,
             "tts_enabled": self.tts_enabled,
             "interruption_handling": self.interruption_handling,
-            "fallback_step": self.fallback_step
+            "fallback_step": self.fallback_step,
+            "is_leads_qualifying": self.is_leads_qualifying,
+            "required_intent_for_leads": self.required_intent_for_leads,
+            "on_leads_fail_goto": self.on_leads_fail_goto
         }
 
 class ScenarioGenerator:
@@ -94,15 +102,16 @@ class ScenarioGenerator:
             "not_interested", "unsure", "objection", "question", "sarcastic"
         ]
         
-        # Types d'étapes
-        self.step_types = {
-            "intro": "Introduction/Présentation",
-            "question": "Question de qualification", 
-            "confirmation": "Confirmation d'accord",
-            "objection": "Gestion d'objection",
-            "offer": "Proposition commerciale",
-            "close": "Fermeture (succès/échec)"
-        }
+        # Types d'étapes avec navigation numérique
+        self.step_types = [
+            ("intro", "Introduction/Vérification identité (TTS: 'Bonjour $nom ?')"),
+            ("hello", "Présentation agent (Audio/TTS: 'Je suis {agent} de...')"),
+            ("question", "Question de qualification"), 
+            ("confirmation", "Confirmation d'accord"),
+            ("objection", "Gestion d'objection"),
+            ("offer", "Proposition commerciale"),
+            ("close", "Fermeture (succès/échec)")
+        ]
 
     @log_function_call(include_args=False)
     def start_interactive_creation(self):
@@ -531,30 +540,93 @@ Réponds UNIQUEMENT avec les 3 variantes, une par ligne, sans numérotation.
         """Crée une étape individuelle du scénario"""
         print(f"\n{Colors.YELLOW}🔨 Création de l'étape: {step_id}{Colors.NC}")
         
-        # Type d'étape
+        # Type d'étape avec navigation numérique
         print("Types d'étapes disponibles:")
-        for key, description in self.step_types.items():
-            print(f"   {key}: {description}")
+        for i, (key, description) in enumerate(self.step_types, 1):
+            print(f"   {i}. {key}: {description}")
         
-        step_type = input(f"\nType d'étape pour '{step_id}': ").strip()
-        if step_type not in self.step_types:
+        try:
+            step_choice = input(f"\nType d'étape pour '{step_id}' (1-{len(self.step_types)}): ").strip()
+            step_type = self.step_types[int(step_choice) - 1][0]
+        except:
             step_type = "question"
         
         step = ScenarioStep(step_id, step_type)
         
-        # Contenu textuel
-        print(f"\n📝 Contenu textuel de l'étape '{step_id}':")
-        print("(Utilisez $variable pour les substitutions)")
-        step.text_content = input("Texte: ").strip()
-        
-        # Fichier audio
-        audio_choice = input(f"\n🎵 Audio préenregistré (o/n) ? [n]: ").strip().lower()
-        if audio_choice in ['o', 'oui', 'y', 'yes']:
-            step.audio_file = input("Nom du fichier audio (ex: intro.wav): ").strip()
-            step.tts_enabled = False
-        else:
+        # Gestion spécifique selon le type d'étape
+        if step_type == "intro":
+            print(f"\n📝 Introduction automatique:")
+            print("Format: 'Bonjour, je suis bien sur le téléphone de $nom ?'")
+            step.text_content = input("Texte intro [ou Enter pour défaut]: ").strip()
+            if not step.text_content:
+                step.text_content = "Bonjour, je suis bien sur le téléphone de $nom ?"
             step.tts_enabled = True
-            step.audio_file = f"{step_id}.wav"  # Sera généré par TTS
+            step.audio_file = f"{step_id}.wav"
+            
+        elif step_type == "hello":
+            print(f"\n📝 Présentation agent:")
+            print("Format: 'Je suis {agent} de {entreprise}, je vous contacte concernant...'")
+            step.text_content = input("Texte présentation: ").strip()
+            
+            # Choix audio pour hello
+            print(f"\n🎵 Mode audio pour cette présentation:")
+            print("   1. Audio pré-enregistré uniquement")
+            print("   2. TTS uniquement") 
+            print("   3. Audio + TTS fallback")
+            
+            try:
+                audio_mode = input("Choix (1-3): ").strip()
+                if audio_mode == "1":
+                    step.audio_file = input("Nom du fichier audio: ").strip()
+                    step.tts_enabled = False
+                elif audio_mode == "2":
+                    step.tts_enabled = True
+                    step.audio_file = f"{step_id}.wav"
+                else:  # 3 ou défaut
+                    step.audio_file = input("Nom du fichier audio principal: ").strip()
+                    step.tts_enabled = True  # Fallback TTS
+            except:
+                step.tts_enabled = True
+                step.audio_file = f"{step_id}.wav"
+                
+        else:
+            # Autres types d'étapes
+            print(f"\n📝 Contenu textuel de l'étape '{step_id}':")
+            print("(Utilisez $variable pour les substitutions)")
+            step.text_content = input("Texte: ").strip()
+            
+            # Configuration spéciale pour les questions de qualification
+            if step_type == "question":
+                print(f"\n🎯 QUALIFICATION LEADS:")
+                is_qualifying = input("Cette question détermine si c'est un lead ? (o/n) [n]: ").strip().lower()
+                
+                if is_qualifying in ['o', 'oui', 'y', 'yes']:
+                    step.is_leads_qualifying = True
+                    print("Réponse requise pour être qualifié comme lead:")
+                    print("   1. Positif (oui, d'accord, intéressé)")
+                    print("   2. Négatif (non, pas intéressé)")
+                    
+                    try:
+                        intent_choice = input("Choix (1-2): ").strip()
+                        if intent_choice == "1":
+                            step.required_intent_for_leads = "Positif"
+                        else:
+                            step.required_intent_for_leads = "Négatif"
+                    except:
+                        step.required_intent_for_leads = "Positif"
+                    
+                    step.on_leads_fail_goto = input("Étape si qualification échoue [close_echec]: ").strip() or "close_echec"
+                    
+                    print(f"✅ Question qualifiante: réponse '{step.required_intent_for_leads}' requise")
+            
+            # Fichier audio
+            audio_choice = input(f"\n🎵 Audio préenregistré (o/n) ? [n]: ").strip().lower()
+            if audio_choice in ['o', 'oui', 'y', 'yes']:
+                step.audio_file = input("Nom du fichier audio (ex: intro.wav): ").strip()
+                step.tts_enabled = False
+            else:
+                step.tts_enabled = True
+                step.audio_file = f"{step_id}.wav"  # Sera généré par TTS
         
         # Configuration timing
         try:
@@ -892,6 +964,17 @@ class {scenario_name.title()}Scenario:
             hybrid_mode=self.advanced_config["hybrid_mode"]
         )
         
+        # Logique de qualification leads
+        leads_status = None
+        if step_config.get("is_leads_qualifying", False):
+            required_intent = step_config.get("required_intent_for_leads")
+            if intent == required_intent:
+                leads_status = "qualified"  # Cette question est validée pour leads
+                self.logger.info(f"✅ Question qualifiante réussie: {{step_id}} ({{intent}})")
+            else:
+                leads_status = "disqualified"  # Cette question disqualifie
+                self.logger.info(f"❌ Question qualifiante échouée: {{step_id}} ({{intent}} au lieu de {{required_intent}})")
+        
         return {{
             "step": step_id,
             "text_sent": text_content,
@@ -899,12 +982,23 @@ class {scenario_name.title()}Scenario:
             "intent": intent,
             "confidence": confidence,
             "metadata": metadata,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
+            "leads_status": leads_status,
+            "is_leads_qualifying": step_config.get("is_leads_qualifying", False)
         }}
     
     def _get_next_step(self, step_result: Dict, step_config: Dict) -> Optional[str]:
-        """Détermine la prochaine étape selon l'intention"""
+        """Détermine la prochaine étape selon l'intention et la qualification leads"""
         intent = step_result.get("intent", "unsure")
+        leads_status = step_result.get("leads_status")
+        
+        # Si c'est une question qualifiante qui échoue → aller directement à l'échec
+        if leads_status == "disqualified":
+            fail_step = step_config.get("on_leads_fail_goto", "close_echec")
+            self.logger.info(f"🚫 Redirection vers {{fail_step}} - qualification échouée")
+            return fail_step
+        
+        # Logique normale
         intent_mapping = step_config.get("intent_mapping", {{}})
         
         # Vérifier mapping direct
@@ -1021,16 +1115,49 @@ class {scenario_name.title()}Scenario:
         return "oui"
     
     def _analyze_final_result(self, conversation_flow: List[Dict]) -> bool:
-        """Analyse le résultat final de la conversation"""
+        """Analyse le résultat final de la conversation et met à jour le statut contact"""
         if not conversation_flow:
             return False
         
-        # Logique simple: si dernière intention positive
-        last_step = conversation_flow[-1]
-        last_intent = last_step.get("intent", "")
+        # Analyser les questions qualifiantes
+        qualifying_questions = [step for step in conversation_flow if step.get("is_leads_qualifying", False)]
         
-        success_intents = ["affirm", "interested", "callback"]
-        return last_intent in success_intents
+        if qualifying_questions:
+            # Vérifier si TOUTES les questions qualifiantes sont réussies
+            all_qualified = all(step.get("leads_status") == "qualified" for step in qualifying_questions)
+            
+            if all_qualified:
+                # Toutes les questions qualifiantes réussies → LEADS
+                self._update_contact_status("Leads")
+                self.logger.info("🎉 Contact qualifié comme LEADS - toutes questions qualifiantes réussies")
+                return True
+            else:
+                # Au moins une question qualifiante échouée → NOT_INTERESTED  
+                self._update_contact_status("Not_interested")
+                self.logger.info("❌ Contact non qualifié - échec question(s) qualifiante(s)")
+                return False
+        else:
+            # Pas de questions qualifiantes → logique classique
+            last_step = conversation_flow[-1]
+            last_intent = last_step.get("intent", "")
+            
+            success_intents = ["Positif"]  # Intentions simplifiées
+            if last_intent in success_intents:
+                self._update_contact_status("Completed")
+                return True
+            else:
+                self._update_contact_status("Not_interested")
+                return False
+    
+    def _update_contact_status(self, status: str):
+        """Met à jour le statut du contact dans la BDD"""
+        try:
+            # Cette méthode sera appelée avec le phone_number du contexte
+            # Pour l'instant, on log juste le statut à appliquer
+            self.logger.info(f"📋 Statut contact à appliquer: {{status}}")
+            # TODO: Implémenter mise à jour BDD réelle
+        except Exception as e:
+            self.logger.error(f"Erreur mise à jour statut contact: {{e}}")
 
 # Instance du scénario pour utilisation globale
 {scenario_name}_scenario = {scenario_name.title()}Scenario()

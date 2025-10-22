@@ -69,15 +69,12 @@ class IntentEngine:
         
         self.logger.info("✅ NLP Intent Engine initialized successfully")
         
-        # Mapping des intents vers les statuts MiniBotPanel
+        # Mapping des intents simplifiés vers les statuts MiniBotPanel
         self.intent_to_status = {
-            "affirm": "positive",
-            "deny": "negative", 
-            "callback": "positive",
-            "price": "interrogatif",
-            "unsure": "neutre",
-            "interested": "positive",
-            "not_interested": "negative"
+            "Positif": "positive",
+            "Négatif": "negative", 
+            "Neutre": "neutre",
+            "Unsure": "unsure"
         }
         
         # Prompts système optimisés avec contexte campagne
@@ -90,15 +87,13 @@ CONTEXTE CAMPAGNE:
 Tu analyses les réponses des prospects français à nos questions sur l'optimisation de placements financiers.
 Réponds UNIQUEMENT en JSON au format {{"intent": "...", "confidence": 0.9}}.
 
-Intents possibles :
-- "affirm" : oui, d'accord, ok, tout à fait, absolument, évidemment
-- "deny" : non, pas intéressé, pas le temps, pas maintenant  
-- "callback" : rappel, rappeler, plus tard, demain, autre moment
-- "price" : combien, coût, prix, tarif, cher, gratuit, frais
-- "interested" : intéressé, ça m'intéresse, dites-moi en plus
-- "not_interested" : pas intéressé, n'ai pas besoin, ça ne m'intéresse pas
-- "unsure" : peut-être, je ne sais pas, il faut que je réfléchisse
+Intents possibles (4 seulement) :
+- "Positif" : oui, d'accord, ok, intéressé, absolument, évidemment, j'aimerais en savoir plus
+- "Négatif" : non, pas intéressé, pas le temps, ça ne m'intéresse pas, arrêtez
+- "Neutre" : peut-être, je ne sais pas, il faut que je réfléchisse, ça dépend
+- "Unsure" : je n'ai pas compris, pouvez-vous répéter, pardon, comment
 
+Pour les questions (qui, quoi, combien, etc.) → TTS répond automatiquement puis continue.
 Réponds TOUJOURS en JSON valide.""",
 
             "greeting": f"""Tu analyses la réponse à l'introduction FRANCE PATRIMOINE.
@@ -109,10 +104,10 @@ Réponds UNIQUEMENT en JSON : {{"intent": "...", "confidence": 0.9}}
 Le prospect répond à l'introduction: "J'ai juste trois petites questions pour voir si nous pouvons vous aider à protéger, optimiser votre patrimoine. Ça vous va ?"
 
 Intents :
-- "affirm" : oui, ok, d'accord, allez-y, je vous écoute, pourquoi pas
-- "deny" : non, pas le temps, pas intéressé, raccrochez, ça ne m'intéresse pas
-- "unsure" : peut-être, ça dépend, voyons, je ne sais pas
-- "callback" : rappel plus tard, pas maintenant, pas le bon moment""",
+- "Positif" : oui, ok, d'accord, allez-y, je vous écoute, pourquoi pas
+- "Négatif" : non, pas le temps, pas intéressé, raccrochez, ça ne m'intéresse pas
+- "Neutre" : peut-être, ça dépend, voyons, je ne sais pas
+- "Unsure" : je n'ai pas compris, pardon, comment""",
 
             "qualification": f"""Tu analyses la réponse aux questions de qualification FRANCE PATRIMOINE.
 Réponds UNIQUEMENT en JSON : {{"intent": "...", "confidence": 0.9}}
@@ -125,11 +120,10 @@ Les questions de qualification portent sur:
 - La satisfaction du conseiller bancaire actuel
 
 Intents :
-- "affirm" : oui, j'ai, effectivement, bien sûr, tout à fait
-- "deny" : non, je n'ai pas, pas du tout, jamais
-- "price" : combien ça rapporte, quel taux, quel rendement, combien
-- "interested" : intéressant, dites-moi en plus, ça m'intéresse
-- "unsure" : je ne sais pas, peut-être, il faut voir, ça dépend""",
+- "Positif" : oui, j'ai, effectivement, bien sûr, tout à fait
+- "Négatif" : non, je n'ai pas, pas du tout, jamais
+- "Neutre" : je ne sais pas, peut-être, il faut voir, ça dépend
+- "Unsure" : je n'ai pas compris, pardon, comment""",
 
             "final_offer": f"""Tu analyses la réponse à l'offre finale FRANCE PATRIMOINE.
 Réponds UNIQUEMENT en JSON : {{"intent": "...", "confidence": 0.9}}
@@ -139,11 +133,10 @@ Réponds UNIQUEMENT en JSON : {{"intent": "...", "confidence": 0.9}}
 Le prospect répond à la proposition: "Un de nos experts vous rappelle sous 48h pour analyser votre dossier et vous présenter nos solutions. Ça vous va ?"
 
 Intents :
-- "affirm" : oui, d'accord, ok, parfait, allez-y, très bien
-- "deny" : non, pas intéressé, ça ne m'intéresse pas, merci mais non
-- "callback" : oui mais plus tard, pas cette semaine, dans un mois, rappel différé
-- "price" : c'est gratuit, ça coûte combien, y a-t-il des frais, quel prix
-- "interested" : intéressant, je suis intéressé, dites-moi en plus"""
+- "Positif" : oui, d'accord, ok, parfait, allez-y, très bien
+- "Négatif" : non, pas intéressé, ça ne m'intéresse pas, merci mais non
+- "Neutre" : oui mais plus tard, pas cette semaine, dans un mois, je réfléchis
+- "Unsure" : je n'ai pas compris, pardon, comment"""
         }
         
         self._initialize_ollama()
@@ -434,9 +427,9 @@ Réponds UNIQUEMENT en JSON: {{"intent": "...", "confidence": 0.9, "contextual_r
                 confidence = float(result.get("confidence", 0.7))
                 
                 # Validation de l'intent
-                valid_intents = ["affirm", "deny", "callback", "price", "interested", "not_interested", "unsure"]
+                valid_intents = ["Positif", "Négatif", "Neutre", "Unsure"]
                 if intent not in valid_intents:
-                    intent = "unsure"
+                    intent = "Unsure"
                     confidence = 0.5
                 
                 return intent, confidence, {"ollama_response": content, "context": context}
@@ -483,10 +476,10 @@ Réponds UNIQUEMENT en JSON: {{"intent": "...", "confidence": 0.9, "contextual_r
                 contextual_response = result.get("contextual_response", "")
                 return_to_step = result.get("return_to_step", step)
                 
-                # Validation des intents + nouveau intent "digression"
-                valid_intents = ["affirm", "deny", "callback", "price", "interested", "not_interested", "unsure", "digression"]
+                # Validation des intents simplifiés
+                valid_intents = ["Positif", "Négatif", "Neutre", "Unsure"]
                 if intent not in valid_intents:
-                    intent = "unsure"
+                    intent = "Unsure"
                     confidence = 0.5
                 
                 metadata = {
@@ -548,21 +541,15 @@ Réponds UNIQUEMENT en JSON: {{"intent": "...", "confidence": 0.9, "contextual_r
         """Fallback sur analyse par mots-clés"""
         sentiment, confidence = self._analyze_sentiment_keywords(text)
         
-        # Mapper le sentiment vers intent
+        # Mapper le sentiment vers intent simplifié
         sentiment_to_intent = {
-            "positif": "affirm",
-            "negatif": "deny", 
-            "interrogatif": "price",
-            "neutre": "unsure"
+            "positif": "Positif",
+            "negatif": "Négatif", 
+            "interrogatif": "Unsure",  # Questions → Unsure
+            "neutre": "Neutre"
         }
         
-        intent = sentiment_to_intent.get(sentiment, "unsure")
-        
-        # Ajustements contextuels
-        if context == "final_offer" and sentiment == "positif":
-            intent = "interested"
-        elif context == "final_offer" and sentiment == "negatif":
-            intent = "not_interested"
+        intent = sentiment_to_intent.get(sentiment, "Unsure")
         
         return intent, confidence, {"original_sentiment": sentiment, "context": context}
 
@@ -570,14 +557,12 @@ Réponds UNIQUEMENT en JSON: {{"intent": "...", "confidence": 0.9, "contextual_r
         """Analyse simple par mots-clés"""
         text_lower = text.lower()
         
-        # Mots-clés par intent
+        # Mots-clés par intent simplifié
         keywords = {
-            "affirm": ["oui", "ok", "d'accord", "allez-y", "parfait", "très bien", "exactement", "tout à fait"],
-            "deny": ["non", "pas intéressé", "pas le temps", "arrêtez", "raccroc", "jamais"],
-            "callback": ["rappel", "rappeler", "plus tard", "demain", "semaine", "autre moment"],
-            "price": ["combien", "coût", "prix", "tarif", "cher", "gratuit", "payant", "euros"],
-            "interested": ["intéresse", "intéressé", "en savoir plus", "dites-moi"],
-            "not_interested": ["pas intéressé", "n'ai pas besoin", "ça ne m'intéresse pas"]
+            "Positif": ["oui", "ok", "d'accord", "allez-y", "parfait", "très bien", "exactement", "tout à fait", "intéresse", "intéressé"],
+            "Négatif": ["non", "pas intéressé", "pas le temps", "arrêtez", "raccroc", "jamais", "n'ai pas besoin", "ça ne m'intéresse pas"],
+            "Neutre": ["peut-être", "je ne sais pas", "il faut voir", "ça dépend", "rappel", "rappeler", "plus tard"],
+            "Unsure": ["quoi", "comment", "pardon", "hein", "compris", "répéter", "combien", "prix", "qui"]
         }
         
         # Compter les matches
@@ -592,7 +577,7 @@ Réponds UNIQUEMENT en JSON: {{"intent": "...", "confidence": 0.9, "contextual_r
             confidence = min(scores[best_intent], 0.8)  # Cap à 0.8 pour keywords
             return best_intent, confidence, {"keyword_matches": scores}
         
-        return "unsure", 0.3, {"keyword_matches": {}}
+        return "Unsure", 0.3, {"keyword_matches": {}}
 
     def _analyze_sentiment_keywords(self, text: str) -> Tuple[str, float]:
         """Analyse de sentiment simple par mots-clés"""
