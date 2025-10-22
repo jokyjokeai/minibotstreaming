@@ -603,29 +603,21 @@ Réponds UNIQUEMENT avec les 3 variantes, une par ligne, sans numérotation.
             print("(Utilisez $variable pour les substitutions)")
             step.text_content = input("Texte: ").strip()
             
-            # Configuration spéciale pour les questions de qualification
-            if step_type == "question":
-                print(f"\n🎯 QUALIFICATION LEADS:")
-                is_qualifying = input("Cette question détermine si c'est un lead ? (o/n) [n]: ").strip().lower()
+            # Configuration LEADS pour TOUTES les étapes (système cumulatif)
+            if step_type in ["question", "rdv", "confirmation"]:
+                print(f"\n🎯 QUALIFICATION LEADS CUMULATIVE:")
+                print(f"Cette étape ({step_type}) peut-elle qualifier/disqualifier pour LEADS ?")
+                is_qualifying = input("Étape qualifiante LEADS ? (o/n) [n]: ").strip().lower()
                 
                 if is_qualifying in ['o', 'oui', 'y', 'yes']:
                     step.is_leads_qualifying = True
-                    print("Réponse requise pour être qualifié comme lead:")
-                    print("   1. Positif (oui, d'accord, intéressé)")
-                    print("   2. Négatif (non, pas intéressé)")
-                    
-                    try:
-                        intent_choice = input("Choix (1-2): ").strip()
-                        if intent_choice == "1":
-                            step.required_intent_for_leads = "Positif"
-                        else:
-                            step.required_intent_for_leads = "Négatif"
-                    except:
-                        step.required_intent_for_leads = "Positif"
-                    
-                    step.on_leads_fail_goto = input("Étape si qualification échoue [close_echec]: ").strip() or "close_echec"
-                    
-                    print(f"✅ Question qualifiante: réponse '{step.required_intent_for_leads}' requise")
+                    step.required_intent_for_leads = "Positif"  # Toujours positif pour qualification
+                    print(f"✅ {step_type.upper()} configurée comme étape qualifiante LEADS")
+                    print("   → Réponse POSITIVE requise pour continuer")
+                    print("   → Réponse NÉGATIVE = BYE immédiat (close_echec)")
+                else:
+                    step.is_leads_qualifying = False
+                    print(f"ℹ️  {step_type.upper()} non-qualifiante pour LEADS")
             
             # Fichier audio
             audio_choice = input(f"\n🎵 Audio préenregistré (o/n) ? [n]: ").strip().lower()
@@ -963,8 +955,8 @@ class {scenario_name.title()}Scenario:
                     self.logger.info("🔄 Retour au script depuis freestyle - Continue étape suivante")
                     # Continue le flow normal à partir de l'étape suivante
             
-            # Déterminer la prochaine étape
-            next_step = self._get_next_step(step_result, step_config)
+            # Déterminer la prochaine étape  
+            next_step = self._get_next_step(step_result, step_config, conversation_flow)
             
             if next_step == current_step:  # Éviter boucle infinie
                 break
@@ -1048,16 +1040,16 @@ class {scenario_name.title()}Scenario:
             "is_leads_qualifying": step_config.get("is_leads_qualifying", False)
         }}
     
-    def _get_next_step(self, step_result: Dict, step_config: Dict) -> Optional[str]:
+    def _get_next_step(self, step_result: Dict, step_config: Dict, conversation_flow: List[Dict] = None) -> Optional[str]:
         """Détermine la prochaine étape selon la logique de flow intelligent"""
         intent = step_result.get("intent", "unsure")
         leads_status = step_result.get("leads_status")
         current_step_type = step_config.get("type", "")
         
-        # Nouvelle logique de flow intelligent
-        return self._get_next_step_intelligent(current_step_type, intent, leads_status, step_config)
+        # Nouvelle logique de flow intelligent avec qualification cumulative
+        return self._get_next_step_intelligent(current_step_type, intent, leads_status, step_config, conversation_flow)
     
-    def _get_next_step_intelligent(self, step_type: str, intent: str, leads_status: str, step_config: Dict) -> Optional[str]:
+    def _get_next_step_intelligent(self, step_type: str, intent: str, leads_status: str, step_config: Dict, conversation_flow: List[Dict] = None) -> Optional[str]:
         """
         Logique de flow intelligent selon les nouvelles règles :
         - intro : Toujours → hello (peu importe la réponse)
@@ -1093,40 +1085,9 @@ class {scenario_name.title()}Scenario:
                 self.logger.info("🔄 retry + négatif → close_echec")
                 return "close_echec"
         
-        # Règle 4: question → logique de qualification
-        elif step_type == "question":
-            # Si c'est une question qualifiante qui échoue
-            if leads_status == "disqualified":
-                self.logger.info("❌ Question qualifiante échouée → close_echec")
-                return "close_echec"
-            
-            # Si toutes les questions sont terminées, aller au rdv
-            # (à implémenter selon le nombre de questions configurées)
-            next_question_num = self._get_next_question_number(step_config)
-            if next_question_num:
-                self.logger.info(f"📋 question → question{next_question_num}")
-                return f"question{next_question_num}"
-            else:
-                self.logger.info("📋 Toutes questions terminées → rdv")
-                return "rdv"
-        
-        # Règle 5: rdv → LEADS qualification la plus importante !
-        elif step_type == "rdv":
-            if intent == "Positif":
-                self.logger.info("📅 rdv + positif → LEADS qualifié ! → confirmation")
-                # Marquer comme LEADS dans les métadonnées
-                step_config["leads_qualified"] = True
-                return "confirmation"
-            else:  # Négatif, Neutre ou Unsure
-                self.logger.info("📅 rdv + négatif/neutre → NOT_INTERESTED → close_echec")
-                # Marquer comme non-intéressé dans les métadonnées  
-                step_config["leads_qualified"] = False
-                return "close_echec"
-        
-        # Règle 6: confirmation → toujours close_success
-        elif step_type == "confirmation":
-            self.logger.info("✅ confirmation → close_success (automatique)")
-            return "close_success"
+        # NOUVELLE LOGIQUE: Qualification cumulative LEADS pour TOUTES les étapes
+        elif step_type in ["question", "rdv", "confirmation"]:
+            return self._handle_leads_qualification_step(step_type, intent, step_config, conversation_flow)
         
         # Fallback sur l'ancien système si pas de règle
         fallback = step_config.get("fallback_step")
@@ -1135,6 +1096,114 @@ class {scenario_name.title()}Scenario:
         
         # Fin du scénario
         return None
+    
+    def _handle_leads_qualification_step(self, step_type: str, intent: str, step_config: Dict, conversation_flow: List[Dict]) -> Optional[str]:
+        """
+        Gère la qualification cumulative LEADS pour toutes les étapes
+        
+        LOGIQUE CUMULATIVE:
+        - Chaque étape peut être marquée comme "LEADS qualifying"
+        - TOUTES les étapes LEADS doivent être positives
+        - Première négative = BYE immédiat (close_echec)
+        - Toutes positives = LEADS qualifié
+        """
+        
+        # Vérifier si cette étape est qualifiante pour LEADS
+        is_leads_qualifying = step_config.get("is_leads_qualifying", False)
+        
+        if is_leads_qualifying:
+            # Cette étape qualifie pour LEADS
+            if intent != "Positif":
+                # ÉCHEC de qualification LEADS → BYE immédiat
+                self.logger.info(f"❌ LEADS: Étape {step_type} échouée ({intent}) → close_echec IMMÉDIAT")
+                return "close_echec"
+            else:
+                # SUCCÈS de cette étape LEADS
+                self.logger.info(f"✅ LEADS: Étape {step_type} validée ({intent}) → Continue qualification")
+        
+        # Déterminer la prochaine étape selon le type
+        if step_type == "question":
+            # Continuer vers la question suivante ou rdv
+            next_question_num = self._get_next_question_number(step_config)
+            if next_question_num:
+                self.logger.info(f"📋 Question validée → question{next_question_num}")
+                return f"question{next_question_num}"
+            else:
+                self.logger.info("📋 Toutes questions terminées → rdv")
+                return "rdv"
+                
+        elif step_type == "rdv":
+            if intent == "Positif":
+                self.logger.info("📅 RDV accepté → confirmation")
+                return "confirmation"
+            else:
+                # Si RDV refusé et pas qualifiant LEADS, alors Not_interested
+                if not is_leads_qualifying:
+                    self.logger.info("📅 RDV refusé (non-qualifiant) → Not_interested")
+                    return "close_echec"  # Géré comme échec mais avec statut différent
+                # Si qualifiant LEADS, déjà géré plus haut
+                
+        elif step_type == "confirmation":
+            if intent == "Positif":
+                # Vérifier qualification cumulative FINALE
+                if self._check_cumulative_leads_qualification(conversation_flow, step_config):
+                    self.logger.info("🔥 LEADS MAX: Toutes qualifications validées → close_success")
+                    return "close_success"
+                else:
+                    self.logger.info("✅ Confirmation validée (pas toutes LEADS) → close_success")
+                    return "close_success"
+            else:
+                # Confirmation échouée
+                if is_leads_qualifying:
+                    # Si confirmation qualifiante échoue → BYE (déjà géré plus haut)
+                    pass
+                else:
+                    # Confirmation non-qualifiante échoue → simple échec
+                    self.logger.info("❌ Confirmation échouée → close_echec")
+                    return "close_echec"
+        
+        # Fallback
+        return "close_echec"
+    
+    def _check_cumulative_leads_qualification(self, conversation_flow: List[Dict], current_step_config: Dict) -> bool:
+        """
+        Vérifie si TOUTES les étapes LEADS ont été validées positivement
+        """
+        if not conversation_flow:
+            return False
+        
+        # Inclure l'étape actuelle
+        all_steps = conversation_flow + [{"step_config": current_step_config, "intent": "Positif"}]
+        
+        # Trouver toutes les étapes marquées comme qualifiantes LEADS
+        leads_steps = []
+        for step in all_steps:
+            step_config = step.get("step_config", {})
+            if step_config.get("is_leads_qualifying", False):
+                leads_steps.append({
+                    "step_type": step_config.get("type", "unknown"),
+                    "intent": step.get("intent", "unknown"),
+                    "is_positive": step.get("intent") == "Positif"
+                })
+        
+        if not leads_steps:
+            self.logger.info("🔍 Aucune étape LEADS qualifiante trouvée")
+            return False
+        
+        # Vérifier que TOUTES les étapes LEADS sont positives
+        all_positive = all(step["is_positive"] for step in leads_steps)
+        
+        leads_count = len(leads_steps)
+        positive_count = sum(1 for step in leads_steps if step["is_positive"])
+        
+        self.logger.info(f"🎯 Qualification LEADS: {positive_count}/{leads_count} étapes validées")
+        
+        if all_positive:
+            self.logger.info(f"🔥 LEADS QUALIFICATION COMPLETE: {leads_count} étapes toutes positives!")
+            return True
+        else:
+            self.logger.info(f"⚠️ Qualification incomplète: {leads_count - positive_count} étapes échouées")
+            return False
     
     def _get_next_question_number(self, step_config: Dict) -> Optional[int]:
         """Détermine le numéro de la prochaine question (1-10)"""
@@ -1491,39 +1560,70 @@ class {scenario_name.title()}Scenario:
         return any(signal in response_lower for signal in hangup_signals)
     
     def _analyze_final_result(self, conversation_flow: List[Dict]) -> bool:
-        """Analyse le résultat final de la conversation et met à jour le statut contact"""
+        """
+        Analyse le résultat final avec système de qualification cumulative LEADS
+        """
         if not conversation_flow:
             return False
         
-        # Analyser les questions qualifiantes
-        qualifying_questions = [step for step in conversation_flow if step.get("is_leads_qualifying", False)]
+        # Nouvelle logique: Qualification cumulative LEADS
+        leads_qualified = self._check_final_leads_qualification(conversation_flow)
         
-        if qualifying_questions:
-            # Vérifier si TOUTES les questions qualifiantes sont réussies
-            all_qualified = all(step.get("leads_status") == "qualified" for step in qualifying_questions)
-            
-            if all_qualified:
-                # Toutes les questions qualifiantes réussies → LEADS
-                self._update_contact_status("Leads")
-                self.logger.info("🎉 Contact qualifié comme LEADS - toutes questions qualifiantes réussies")
-                return True
-            else:
-                # Au moins une question qualifiante échouée → NOT_INTERESTED  
-                self._update_contact_status("Not_interested")
-                self.logger.info("❌ Contact non qualifié - échec question(s) qualifiante(s)")
-                return False
+        if leads_qualified:
+            # TOUTES les étapes LEADS validées → LEADS MAX!
+            self._update_contact_status("Leads")
+            self.logger.info("🔥 Contact qualifié comme LEADS MAX - qualification cumulative complète")
+            return True
         else:
-            # Pas de questions qualifiantes → logique classique
+            # Qualification échouée ou pas d'étapes qualifiantes
             last_step = conversation_flow[-1]
             last_intent = last_step.get("intent", "")
             
-            success_intents = ["Positif"]  # Intentions simplifiées
-            if last_intent in success_intents:
+            # Déterminer le statut selon la dernière étape
+            if last_intent == "Positif":
+                # Conversation positive mais pas LEADS qualifié
                 self._update_contact_status("Completed")
+                self.logger.info("✅ Conversation terminée positivement (non-LEADS)")
                 return True
             else:
+                # Conversation échouée
                 self._update_contact_status("Not_interested")
+                self.logger.info("❌ Conversation terminée en échec")
                 return False
+    
+    def _check_final_leads_qualification(self, conversation_flow: List[Dict]) -> bool:
+        """
+        Vérification finale de qualification LEADS cumulative
+        """
+        # Trouver toutes les étapes marquées comme qualifiantes LEADS
+        leads_steps = []
+        for step in conversation_flow:
+            if step.get("is_leads_qualifying", False):
+                leads_steps.append({
+                    "step_id": step.get("step_id", "unknown"),
+                    "intent": step.get("intent", "unknown"),
+                    "is_positive": step.get("intent") == "Positif"
+                })
+        
+        if not leads_steps:
+            self.logger.info("🔍 Aucune étape LEADS qualifiante dans la conversation")
+            return False
+        
+        # Vérifier que TOUTES sont positives
+        all_positive = all(step["is_positive"] for step in leads_steps)
+        
+        leads_count = len(leads_steps)
+        positive_count = sum(1 for step in leads_steps if step["is_positive"])
+        
+        self.logger.info(f"🎯 FINAL - Qualification LEADS: {positive_count}/{leads_count} étapes validées")
+        
+        if all_positive:
+            self.logger.info(f"🔥 LEADS QUALIFICATION FINALE RÉUSSIE: {leads_count} étapes toutes positives!")
+            return True
+        else:
+            failed_steps = [step["step_id"] for step in leads_steps if not step["is_positive"]]
+            self.logger.info(f"❌ Qualification échouée sur: {', '.join(failed_steps)}")
+            return False
     
     def _update_contact_status(self, status: str):
         """Met à jour le statut du contact dans la BDD"""
