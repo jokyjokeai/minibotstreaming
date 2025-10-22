@@ -329,6 +329,31 @@ class ScenarioGenerator:
                     "tone": self.current_scenario["agent_personality"][0],
                     "context": f"Objection sur {self.current_scenario['product_name']}"
                 }
+            else:
+                # Cas vide : générer 4 variantes complètes avec Ollama
+                print(f"   🤖 Génération automatique de 4 variantes via Ollama...")
+                
+                auto_responses = self._enrich_response_with_ollama(
+                    objection, 
+                    "",  # Réponse vide pour déclencher génération complète
+                    self.current_scenario
+                )
+                
+                # Présenter les 4 variantes générées
+                selected_responses = self._validate_ollama_responses(
+                    objection, 
+                    "[Génération automatique]", 
+                    auto_responses
+                )
+                
+                objection_responses[objection] = {
+                    "primary_response": selected_responses["primary"],
+                    "fallback_response": selected_responses["fallback"],
+                    "alternatives": selected_responses["alternatives"],
+                    "tone": self.current_scenario["agent_personality"][0],
+                    "context": f"Objection sur {self.current_scenario['product_name']} (auto-généré)",
+                    "auto_generated": True
+                }
         
         self.current_scenario["objection_responses"] = objection_responses
         
@@ -596,8 +621,27 @@ Objection client: "{objection}"
             step.text_content = input("Texte intro [ou Enter pour défaut]: ").strip()
             if not step.text_content:
                 step.text_content = "Bonjour, je suis bien sur le téléphone de $nom ?"
-            step.tts_enabled = True
-            step.audio_file = f"{step_id}.wav"
+            
+            # Choix audio pour intro (même logique que hello)
+            print(f"\n🎵 Mode audio pour cette introduction:")
+            print("   1. Audio pré-enregistré uniquement")
+            print("   2. TTS uniquement") 
+            print("   3. Audio + TTS fallback")
+            
+            try:
+                audio_mode = input("Choix (1-3): ").strip()
+                if audio_mode == "1":
+                    step.audio_file = input("Nom du fichier audio: ").strip()
+                    step.tts_enabled = False
+                elif audio_mode == "2":
+                    step.tts_enabled = True
+                    step.audio_file = f"{step_id}.wav"
+                else:  # 3 ou défaut
+                    step.audio_file = input("Nom du fichier audio principal: ").strip()
+                    step.tts_enabled = True  # Fallback TTS
+            except:
+                step.tts_enabled = True
+                step.audio_file = f"{step_id}.wav"
             
         elif step_type == "hello":
             print(f"\n📝 Présentation agent:")
@@ -2141,11 +2185,11 @@ if __name__ == "__main__":
             sys.path.insert(0, str(Path(__file__).parent.parent))
             from services.tts_voice_clone import voice_clone_service
             
-            # Dossier audio
-            audio_dir = Path(self.scenarios_dir.parent / "audio")
-            audio_dir.mkdir(exist_ok=True)
+            # Dossier TTS générés (pas audio/ qui est pour pré-enregistrements)
+            tts_generated_dir = Path(self.scenarios_dir.parent / "tts_generated")
+            tts_generated_dir.mkdir(exist_ok=True)
             
-            output_path = audio_dir / audio_filename
+            output_path = tts_generated_dir / audio_filename
             
             # Générer l'audio avec voice cloning
             result = voice_clone_service.generate_speech(

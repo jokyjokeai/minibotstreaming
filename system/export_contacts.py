@@ -59,7 +59,7 @@ class ContactExporter:
 
     def get_transcript_text(self, call_id):
         """
-        Lit le fichier de transcription JSON et retourne le texte formaté
+        Lit le fichier de transcription JSON complète post-appel et retourne le texte formaté
 
         Args:
             call_id: ID de l'appel
@@ -67,29 +67,55 @@ class ContactExporter:
         Returns:
             Texte de conversation formaté (BOT: ... | CLIENT: ...)
         """
-        # Chemin vers le répertoire transcripts
+        # Chemin vers le répertoire transcripts (nouveau format post-call)
         base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        transcript_path = os.path.join(base_dir, "transcripts", f"transcript_{call_id}.json")
+        
+        # Essayer d'abord le nouveau format (post-call complet)
+        complete_transcript_path = os.path.join(base_dir, "transcripts", f"complete_call_{call_id}.json")
+        
+        if os.path.exists(complete_transcript_path):
+            try:
+                with open(complete_transcript_path, 'r', encoding='utf-8') as f:
+                    transcript = json.load(f)
 
-        if not os.path.exists(transcript_path):
-            return "[Transcription non disponible]"
+                # Nouveau format: conversation_analysis.turns
+                conversation_text = []
+                turns = transcript.get("conversation_analysis", {}).get("turns", [])
+                
+                for turn in turns:
+                    speaker = turn.get("speaker", "UNKNOWN")
+                    text = turn.get("text", "")
+                    start_time = turn.get("start_time", 0)
+                    
+                    if text.strip():  # Ignorer les segments vides
+                        conversation_text.append(f"[{start_time:05.1f}s] {speaker}: {text}")
 
-        try:
-            with open(transcript_path, 'r', encoding='utf-8') as f:
-                transcript = json.load(f)
+                return " | ".join(conversation_text) if conversation_text else "[Conversation analysée mais vide]"
+                
+            except Exception as e:
+                return f"[Erreur lecture transcription complète: {e}]"
+        
+        # Fallback: ancien format si le nouveau n'existe pas
+        old_transcript_path = os.path.join(base_dir, "transcripts", f"transcript_{call_id}.json")
+        
+        if os.path.exists(old_transcript_path):
+            try:
+                with open(old_transcript_path, 'r', encoding='utf-8') as f:
+                    transcript = json.load(f)
 
-            conversation_text = []
-            for turn in transcript.get("conversation", []):
-                if turn["speaker"] == "BOT":
-                    conversation_text.append(f"BOT: {turn['text']}")
-                else:
-                    conversation_text.append(f"CLIENT: {turn['transcription']}")
+                conversation_text = []
+                for turn in transcript.get("conversation", []):
+                    if turn["speaker"] == "BOT":
+                        conversation_text.append(f"BOT: {turn['text']}")
+                    else:
+                        conversation_text.append(f"CLIENT: {turn['transcription']}")
 
-            return " | ".join(conversation_text)
-
-        except Exception as e:
-            logger.error(f"❌ Erreur lecture transcription {call_id}: {e}")
-            return "[Erreur lecture transcription]"
+                return " | ".join(conversation_text)
+                
+            except Exception as e:
+                return f"[Erreur lecture ancienne transcription: {e}]"
+        
+        return "[Transcription non disponible - Aucun fichier trouvé]"
 
     def export_contacts(self, output_file, campaign=None, status=None, include_calls=False):
         """
