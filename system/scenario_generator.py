@@ -8,6 +8,7 @@ import os
 import sys
 import json
 import re
+import time
 from pathlib import Path
 from typing import Dict, List, Any, Optional
 from datetime import datetime
@@ -96,21 +97,21 @@ class ScenarioGenerator:
             "flow_order": []
         }
         
-        # Intent types disponibles
+        # Intent types disponibles (4 intentions simplifiées)
         self.available_intents = [
-            "affirm", "deny", "callback", "price", "interested", 
-            "not_interested", "unsure", "objection", "question", "sarcastic"
+            "Positif", "Négatif", "Neutre", "Unsure"
         ]
         
-        # Types d'étapes avec navigation numérique
+        # Types d'étapes avec navigation numérique  
         self.step_types = [
-            ("intro", "Introduction/Vérification identité (TTS: 'Bonjour $nom ?')"),
-            ("hello", "Présentation agent (Audio/TTS: 'Je suis {agent} de...')"),
-            ("question", "Question de qualification"), 
-            ("confirmation", "Confirmation d'accord"),
-            ("objection", "Gestion d'objection"),
-            ("offer", "Proposition commerciale"),
-            ("close", "Fermeture (succès/échec)")
+            ("intro", "Introduction/Vérification identité (optionnel - toujours → hello)"),
+            ("hello", "Présentation agent (si oui → question1, si non → retry)"),
+            ("retry", "Tentative récupération (si oui → question1, si non → close_echec)"),
+            ("question", "Question de qualification (1 à 10 questions)"), 
+            ("rdv", "Proposition de rendez-vous (si oui → confirmation, si non → close_echec)"),
+            ("confirmation", "Confirmation d'accord (toujours → close_success)"),
+            ("close_success", "Fermeture succès"),
+            ("close_echec", "Fermeture échec")
         ]
 
     @log_function_call(include_args=False)
@@ -347,60 +348,67 @@ class ScenarioGenerator:
         self.current_scenario["faq"] = faq
 
     def _setup_variables(self):
-        """Configuration des variables dynamiques avec sources BDD"""
+        """Configuration des variables dynamiques avec interface inversée"""
         print(f"\n{Colors.PURPLE}🔧 VARIABLES DYNAMIQUES{Colors.NC}")
         print("-" * 30)
-        print("Configurez les variables qui seront remplacées dans les textes")
-        print("Exemple: 'Bonjour $nom, je suis $agent de $entreprise'")
+        print("Ajoutez les données que vous voulez utiliser dans vos textes")
         
-        # Options de données disponibles depuis la BDD
-        db_sources = {
-            "1": {"code": "contact.first_name", "description": "Prénom du contact"},
-            "2": {"code": "contact.last_name", "description": "Nom de famille du contact"},
-            "3": {"code": "f'{contact.first_name} {contact.last_name}'", "description": "Nom complet du contact"},
-            "4": {"code": "contact.city", "description": "Ville du contact"}
-        }
+        # Options de données avec noms de variables suggérés
+        data_options = [
+            ("contact.first_name", "prenom", "Prénom du contact (ex: Jean)"),
+            ("contact.last_name", "nom", "Nom de famille du contact (ex: Dupont)"),
+            ("f'{contact.first_name} {contact.last_name}'", "nom_complet", "Nom complet du contact (ex: Jean Dupont)"),
+            ("contact.city", "ville", "Ville du contact (ex: Paris)"),
+            ("manual", "custom", "Valeur fixe que je définis maintenant")
+        ]
         
         variables = {}
         
         while True:
-            print(f"\n{Colors.CYAN}Variables actuelles: {list(variables.keys())}{Colors.NC}")
-            var_name = input("\n📝 Nom de variable (ou Enter pour terminer): ").strip()
+            if variables:
+                print(f"\n{Colors.CYAN}Variables créées: {list(variables.keys())}{Colors.NC}")
             
-            if not var_name:
+            print(f"\n🔧 QUELLE DONNÉE VOULEZ-VOUS UTILISER?")
+            for i, (code, var_name, description) in enumerate(data_options, 1):
+                print(f"   {i}. {description} → ${var_name}")
+            print(f"   6. Terminé")
+            
+            choice = input("\nChoix (1-6): ").strip()
+            
+            if choice == "6" or not choice:
                 break
                 
-            var_description = input(f"📄 Description de ${var_name}: ").strip()
-            
-            print(f"\n🔧 SOURCE DE DONNÉES pour ${var_name}:")
-            for key, info in db_sources.items():
-                print(f"   {key}. {info['description']}")
-            print(f"   5. Valeur fixe (saisie manuelle)")
-            
-            source_choice = input("\nChoisissez la source (1-5): ").strip()
-            
-            if source_choice in db_sources:
-                # Source BDD dynamique
-                variables[var_name] = {
-                    "description": var_description,
-                    "source": "database",
-                    "code": db_sources[source_choice]["code"],
-                    "db_description": db_sources[source_choice]["description"]
-                }
-                print(f"✅ ${var_name} sera récupéré dynamiquement: {db_sources[source_choice]['description']}")
-                
-            elif source_choice == "5":
-                # Valeur fixe
-                var_value = input(f"🔧 Valeur fixe pour ${var_name}: ").strip()
-                variables[var_name] = {
-                    "description": var_description,
-                    "source": "manual",
-                    "value": var_value
-                }
-                print(f"✅ ${var_name} = '{var_value}' (valeur fixe)")
-                
-            else:
-                print(f"❌ Choix invalide, ${var_name} ignoré")
+            try:
+                choice_idx = int(choice) - 1
+                if 0 <= choice_idx < len(data_options):
+                    code, suggested_name, description = data_options[choice_idx]
+                    
+                    if code == "manual":
+                        # Valeur fixe
+                        var_name = input(f"📝 Nom de la variable: ").strip() or "custom"
+                        var_value = input(f"🔧 Valeur de ${var_name}: ").strip()
+                        
+                        variables[var_name] = {
+                            "description": f"Valeur fixe: {var_value}",
+                            "source": "manual",
+                            "value": var_value
+                        }
+                        print(f"✅ Variable ${var_name} = '{var_value}' créée")
+                        
+                    else:
+                        # Donnée BDD
+                        var_name = input(f"📝 Nom de la variable [{suggested_name}]: ").strip() or suggested_name
+                        
+                        variables[var_name] = {
+                            "description": description,
+                            "source": "database", 
+                            "code": code,
+                            "db_description": description
+                        }
+                        print(f"✅ Variable ${var_name} créée (contiendra {description.lower()})")
+                        
+            except (ValueError, IndexError):
+                print("❌ Choix invalide")
         
         self.current_scenario["variables"] = variables
 
@@ -634,14 +642,29 @@ Réponds UNIQUEMENT avec les 3 variantes, une par ligne, sans numérotation.
         except:
             step.max_wait_seconds = 10.0
         
-        # Barge-in
+        # Gestion d'interruption intelligente
         barge_choice = input(f"🔄 Autoriser interruption client (o/n) ? [o]: ").strip().lower()
         step.barge_in_enabled = barge_choice not in ['n', 'non', 'no']
         
         if step.barge_in_enabled:
-            interruption_choice = input("🎯 Gestion interruption (continue/restart/ignore) [continue]: ").strip()
-            if interruption_choice in ['continue', 'restart', 'ignore']:
-                step.interruption_handling = interruption_choice
+            print("🎯 Mode interruption:")
+            print("   1. Intelligent (IA répond + continue) [RECOMMANDÉ]")
+            print("   2. Continue (ignore interruption)")
+            print("   3. Restart (recommence étape)")
+            
+            try:
+                mode_choice = input("Choix [1]: ").strip() or "1"
+                if mode_choice == "1":
+                    step.interruption_handling = "intelligent"
+                elif mode_choice == "2": 
+                    step.interruption_handling = "continue"
+                else:
+                    step.interruption_handling = "restart"
+            except:
+                step.interruption_handling = "intelligent"
+            
+            if step.interruption_handling == "intelligent":
+                print("✅ Interruptions gérées intelligemment par IA")
         
         return step
 
@@ -660,13 +683,26 @@ Réponds UNIQUEMENT avec les 3 variantes, une par ligne, sans numérotation.
         while True:
             print(f"\n{Colors.CYAN}Transitions actuelles: {step.intent_mapping}{Colors.NC}")
             
-            intent = input("\n🎯 Intention client (ou Enter pour terminer): ").strip()
-            if not intent:
+            intent_input = input("\n🎯 Intention client (numéro ou nom, Enter pour terminer): ").strip()
+            if not intent_input:
                 break
             
-            if intent not in self.available_intents:
-                print(f"{Colors.RED}Intention inconnue. Disponibles: {self.available_intents}{Colors.NC}")
-                continue
+            # Support input numérique
+            intent = None
+            if intent_input.isdigit():
+                idx = int(intent_input) - 1
+                if 0 <= idx < len(self.available_intents):
+                    intent = self.available_intents[idx]
+                else:
+                    print(f"{Colors.RED}Numéro invalide. Choisissez entre 1 et {len(self.available_intents)}{Colors.NC}")
+                    continue
+            else:
+                # Support input texte
+                if intent_input in self.available_intents:
+                    intent = intent_input
+                else:
+                    print(f"{Colors.RED}Intention inconnue. Disponibles: {self.available_intents}{Colors.NC}")
+                    continue
             
             next_step = input(f"➡️  Si '{intent}', aller à l'étape: ").strip()
             
@@ -914,6 +950,19 @@ class {scenario_name.title()}Scenario:
             step_result = self._execute_step(robot, channel_id, current_step, step_config, variables)
             conversation_flow.append(step_result)
             
+            # Gérer les codes de retour freestyle
+            freestyle_code = step_result.get("freestyle_code")
+            if freestyle_code:
+                if freestyle_code == "CLOSE_SUCCESS":
+                    self.logger.info("🎉 Conversation terminée avec succès via freestyle")
+                    return True
+                elif freestyle_code == "CLOSE_ECHEC":
+                    self.logger.info("❌ Conversation terminée en échec via freestyle")
+                    return False
+                elif freestyle_code == "RETURN_TO_SCRIPT":
+                    self.logger.info("🔄 Retour au script depuis freestyle - Continue étape suivante")
+                    # Continue le flow normal à partir de l'étape suivante
+            
             # Déterminer la prochaine étape
             next_step = self._get_next_step(step_result, step_config)
             
@@ -956,6 +1005,18 @@ class {scenario_name.title()}Scenario:
         else:
             response = self._listen_simple(robot, channel_id, step_config.get("max_wait_seconds", 10.0))
         
+        # Gérer les codes de retour spéciaux du mode freestyle
+        if isinstance(response, str) and response.startswith(("RETURN_TO_SCRIPT", "CLOSE_SUCCESS", "CLOSE_ECHEC")):
+            self.logger.info(f"🎯 Code retour freestyle: {response}")
+            return {
+                "step_id": step_id,
+                "response": response,
+                "intent": response.split("_")[1].lower() if "_" in response else "freestyle",
+                "confidence": 1.0,
+                "freestyle_code": response,
+                "timestamp": time.time()
+            }
+        
         # Analyser l'intention
         intent, confidence, metadata = self.intent_engine.get_intent(
             response, 
@@ -988,29 +1049,105 @@ class {scenario_name.title()}Scenario:
         }}
     
     def _get_next_step(self, step_result: Dict, step_config: Dict) -> Optional[str]:
-        """Détermine la prochaine étape selon l'intention et la qualification leads"""
+        """Détermine la prochaine étape selon la logique de flow intelligent"""
         intent = step_result.get("intent", "unsure")
         leads_status = step_result.get("leads_status")
+        current_step_type = step_config.get("type", "")
         
-        # Si c'est une question qualifiante qui échoue → aller directement à l'échec
-        if leads_status == "disqualified":
-            fail_step = step_config.get("on_leads_fail_goto", "close_echec")
-            self.logger.info(f"🚫 Redirection vers {{fail_step}} - qualification échouée")
-            return fail_step
+        # Nouvelle logique de flow intelligent
+        return self._get_next_step_intelligent(current_step_type, intent, leads_status, step_config)
+    
+    def _get_next_step_intelligent(self, step_type: str, intent: str, leads_status: str, step_config: Dict) -> Optional[str]:
+        """
+        Logique de flow intelligent selon les nouvelles règles :
+        - intro : Toujours → hello (peu importe la réponse)
+        - hello : Positif/Neutre → question1, Négatif → retry  
+        - retry : Positif/Neutre → question1, Négatif → close_echec
+        - question : Logique de qualification (selon règles leads)
+        - rdv : Positif → confirmation, Négatif/Neutre → close_echec
+        - confirmation : Toujours → close_success
+        """
         
-        # Logique normale
-        intent_mapping = step_config.get("intent_mapping", {{}})
+        self.logger.info(f"🎯 Flow intelligent: {step_type} + {intent} → ?")
         
-        # Vérifier mapping direct
-        if intent in intent_mapping:
-            return intent_mapping[intent]
+        # Règle 1: intro → toujours hello
+        if step_type == "intro":
+            self.logger.info("📋 intro → hello (règle automatique)")
+            return "hello"
         
-        # Fallback
+        # Règle 2: hello → question1 si positif/neutre, retry si négatif
+        elif step_type == "hello":
+            if intent in ["Positif", "Neutre"]:
+                self.logger.info("👋 hello + positif/neutre → question1")
+                return "question1"
+            else:  # Négatif ou Unsure
+                self.logger.info("👋 hello + négatif → retry")
+                return "retry"
+        
+        # Règle 3: retry → question1 si positif/neutre, close_echec si négatif
+        elif step_type == "retry":
+            if intent in ["Positif", "Neutre"]:
+                self.logger.info("🔄 retry + positif/neutre → question1")
+                return "question1"
+            else:  # Négatif ou Unsure
+                self.logger.info("🔄 retry + négatif → close_echec")
+                return "close_echec"
+        
+        # Règle 4: question → logique de qualification
+        elif step_type == "question":
+            # Si c'est une question qualifiante qui échoue
+            if leads_status == "disqualified":
+                self.logger.info("❌ Question qualifiante échouée → close_echec")
+                return "close_echec"
+            
+            # Si toutes les questions sont terminées, aller au rdv
+            # (à implémenter selon le nombre de questions configurées)
+            next_question_num = self._get_next_question_number(step_config)
+            if next_question_num:
+                self.logger.info(f"📋 question → question{next_question_num}")
+                return f"question{next_question_num}"
+            else:
+                self.logger.info("📋 Toutes questions terminées → rdv")
+                return "rdv"
+        
+        # Règle 5: rdv → LEADS qualification la plus importante !
+        elif step_type == "rdv":
+            if intent == "Positif":
+                self.logger.info("📅 rdv + positif → LEADS qualifié ! → confirmation")
+                # Marquer comme LEADS dans les métadonnées
+                step_config["leads_qualified"] = True
+                return "confirmation"
+            else:  # Négatif, Neutre ou Unsure
+                self.logger.info("📅 rdv + négatif/neutre → NOT_INTERESTED → close_echec")
+                # Marquer comme non-intéressé dans les métadonnées  
+                step_config["leads_qualified"] = False
+                return "close_echec"
+        
+        # Règle 6: confirmation → toujours close_success
+        elif step_type == "confirmation":
+            self.logger.info("✅ confirmation → close_success (automatique)")
+            return "close_success"
+        
+        # Fallback sur l'ancien système si pas de règle
         fallback = step_config.get("fallback_step")
         if fallback:
             return fallback
         
         # Fin du scénario
+        return None
+    
+    def _get_next_question_number(self, step_config: Dict) -> Optional[int]:
+        """Détermine le numéro de la prochaine question (1-10)"""
+        current_step = step_config.get("step_name", "")
+        
+        # Extraire le numéro actuel si c'est une question numérotée
+        if current_step.startswith("question") and current_step[8:].isdigit():
+            current_num = int(current_step[8:])
+            # Vérifier s'il y a une question suivante configurée
+            total_questions = step_config.get("total_questions", 1)
+            if current_num < total_questions:
+                return current_num + 1
+        
         return None
     
     def _listen_with_barge_in(self, robot, channel_id: str, max_wait: float, interruption_handling: str) -> str:
@@ -1019,7 +1156,12 @@ class {scenario_name.title()}Scenario:
             # Démarrer l'écoute avec détection d'interruption
             response = self._listen_simple(robot, channel_id, max_wait)
             
-            # Analyser si c'est une interruption qui nécessite une réponse automatique
+            # Détecter si c'est une interruption majeure qui nécessite le mode FREESTYLE
+            if self._requires_freestyle_mode(response):
+                self.logger.info("🎙️ INTERRUPTION MAJEURE → Bascule MODE FREESTYLE")
+                return self._handle_freestyle_conversation(robot, channel_id, response, interruption_handling)
+            
+            # Analyser interruptions mineures (ancien système)
             interruption_intent = self._detect_interruption_intent(response)
             
             if interruption_intent:
@@ -1113,6 +1255,240 @@ class {scenario_name.title()}Scenario:
         # TODO: Implémenter écoute ASR
         # Pour l'instant, simulation
         return "oui"
+    
+    # ====== MODE FREESTYLE OLLAMA + TTS ======
+    
+    def _requires_freestyle_mode(self, response: str) -> bool:
+        """Détermine si une interruption nécessite le mode freestyle complet"""
+        
+        # Patterns qui déclenchent le mode freestyle (interruptions majeures)
+        freestyle_triggers = [
+            # Questions agressives/méfiantes
+            "qui vous a donné", "qui vous êtes", "où avez-vous", "comment vous", 
+            "pourquoi vous", "qu'est-ce que", "c'est quoi", "d'où sortez",
+            
+            # Objections majeures
+            "pas intéressé", "raccrochez", "arrêtez", "spam", "démarchage", 
+            "liste rouge", "interdire", "signaler", "arnaque",
+            
+            # Questions complexes
+            "expliquez", "comment ça marche", "garantie", "sécurité", "légal",
+            "combien", "quel pourcentage", "risque", "durée",
+            
+            # Situations personnelles
+            "ma situation", "mes revenus", "mon âge", "retraité", "chômage",
+            "divorce", "problème", "maladie", "difficile",
+            
+            # Interruptions émotionnelles
+            "en colère", "énerve", "agace", "fatigue", "stress", "inquiet"
+        ]
+        
+        response_lower = response.lower()
+        for trigger in freestyle_triggers:
+            if trigger in response_lower:
+                self.logger.info(f"🎯 Trigger freestyle détecté: '{trigger}' dans '{response[:50]}...'")
+                return True
+        
+        # Détecter aussi les réponses longues (> 15 mots = besoin de discussion)
+        word_count = len(response.split())
+        if word_count > 15:
+            self.logger.info(f"🎯 Réponse longue ({word_count} mots) → Mode freestyle")
+            return True
+            
+        return False
+    
+    def _handle_freestyle_conversation(self, robot, channel_id: str, initial_response: str, interruption_handling: str) -> str:
+        """
+        Gère une conversation freestyle complète avec Ollama + TTS
+        Conversation libre jusqu'à résolution ou échec
+        """
+        self.logger.info("🚀 DÉMARRAGE MODE FREESTYLE - Conversation libre avec IA")
+        
+        # Context pour Ollama
+        context = self._build_freestyle_context()
+        conversation_history = [
+            {"role": "client", "message": initial_response, "timestamp": time.time()}
+        ]
+        
+        max_freestyle_turns = 10  # Limite de sécurité
+        turn_count = 0
+        
+        try:
+            while turn_count < max_freestyle_turns:
+                turn_count += 1
+                self.logger.info(f"🎙️ Tour freestyle {turn_count}/{max_freestyle_turns}")
+                
+                # Générer réponse intelligente avec Ollama
+                ai_response = self._generate_freestyle_response(
+                    conversation_history, 
+                    context, 
+                    turn_count
+                )
+                
+                if not ai_response:
+                    self.logger.warning("❌ Pas de réponse IA - Retour script")
+                    return "RETURN_TO_SCRIPT"
+                
+                # Jouer la réponse avec TTS
+                self._speak_text(robot, channel_id, ai_response["text"])
+                
+                # Enregistrer dans l'historique
+                conversation_history.append({
+                    "role": "agent", 
+                    "message": ai_response["text"], 
+                    "intent": ai_response.get("intent", "freestyle"),
+                    "timestamp": time.time()
+                })
+                
+                # Vérifier si on doit terminer la conversation freestyle
+                if ai_response.get("action") == "close_success":
+                    self.logger.info("✅ Freestyle terminé avec succès")
+                    return "CLOSE_SUCCESS"
+                elif ai_response.get("action") == "close_fail":
+                    self.logger.info("❌ Freestyle terminé en échec")
+                    return "CLOSE_ECHEC"
+                elif ai_response.get("action") == "return_script":
+                    self.logger.info("🔄 Retour au script depuis freestyle")
+                    return "RETURN_TO_SCRIPT"
+                
+                # Écouter la réponse suivante du client
+                client_response = self._listen_simple(robot, channel_id, 10.0)
+                conversation_history.append({
+                    "role": "client", 
+                    "message": client_response, 
+                    "timestamp": time.time()
+                })
+                
+                # Vérifier si le client veut raccrocher
+                if self._client_wants_to_hang_up(client_response):
+                    self.logger.info("📞 Client veut raccrocher - Fin freestyle")
+                    return "CLOSE_ECHEC"
+        
+        except Exception as e:
+            self.logger.error(f"❌ Erreur mode freestyle: {e}")
+            
+        # Fin de conversation freestyle - retour script par défaut
+        self.logger.info("🔄 Fin freestyle - Retour au script")
+        return "RETURN_TO_SCRIPT"
+    
+    def _build_freestyle_context(self) -> Dict[str, Any]:
+        """Construit le contexte pour les réponses freestyle"""
+        return {
+            "agent_name": self.current_scenario.get("agent_name", "Marc"),
+            "company": self.current_scenario.get("company", "Patrimoine Conseil"),
+            "product": self.current_scenario.get("product", "épargne patrimoniale"),
+            "sector": self.current_scenario.get("sector", "finance"),
+            "product_price": self.current_scenario.get("product_price", "à partir de 500€"),
+            "current_step": "freestyle_mode",
+            "call_objective": "convaincre et obtenir un rendez-vous",
+            "tone": "professionnel mais chaleureux",
+            "max_response_length": "2-3 phrases maximum"
+        }
+    
+    def _generate_freestyle_response(self, conversation_history: List[Dict], context: Dict, turn_count: int) -> Optional[Dict]:
+        """Génère une réponse freestyle intelligente avec Ollama"""
+        try:
+            if not hasattr(self, 'intent_engine') or not self.intent_engine:
+                self.logger.error("❌ Service NLP non disponible pour freestyle")
+                return None
+            
+            # Construire le prompt pour Ollama
+            last_client_message = conversation_history[-1]["message"]
+            
+            prompt = f"""Tu es {context['agent_name']} de {context['company']}, expert en {context['product']}.
+            
+            CONVERSATION EN COURS:
+            """
+            
+            # Ajouter l'historique des 3 derniers échanges
+            recent_history = conversation_history[-6:] if len(conversation_history) > 6 else conversation_history
+            for msg in recent_history:
+                role = "CLIENT" if msg["role"] == "client" else "VOUS"
+                prompt += f"{role}: {msg['message']}\n"
+            
+            prompt += f"""
+            
+            RÈGLES:
+            1. Répondre naturellement et professionnellement au client
+            2. Rester concentré sur l'objectif: obtenir un rendez-vous
+            3. Gérer les objections avec empathie et arguments solides
+            4. Si client très hostile → recommander action 'close_fail'
+            5. Si client convaincu → recommander action 'return_script' 
+            6. Si besoin de continuer → recommander action 'continue'
+            7. Maximum 2-3 phrases par réponse
+            
+            ANALYSEZ le dernier message du client et générez:
+            - Une réponse appropriée (2-3 phrases max)
+            - L'action recommandée: continue/return_script/close_success/close_fail
+            
+            Format JSON requis:
+            {{"text": "votre réponse au client", "action": "continue", "confidence": 0.8}}
+            """
+            
+            # Appeler Ollama via le service NLP
+            result = self.intent_engine._call_ollama_direct(prompt)
+            
+            if result and "text" in result:
+                self.logger.info(f"🤖 Réponse freestyle générée: {result['text'][:50]}...")
+                return result
+            else:
+                # Fallback avec réponse prédéfinie selon le contexte
+                return self._generate_fallback_freestyle_response(last_client_message, turn_count)
+                
+        except Exception as e:
+            self.logger.error(f"❌ Erreur génération freestyle: {e}")
+            return self._generate_fallback_freestyle_response(conversation_history[-1]["message"], turn_count)
+    
+    def _generate_fallback_freestyle_response(self, client_message: str, turn_count: int) -> Dict:
+        """Génère une réponse freestyle de fallback selon le contexte"""
+        
+        client_lower = client_message.lower()
+        
+        # Réponses selon le type de message client
+        if any(word in client_lower for word in ["pas intéressé", "pas le temps", "raccrocher"]):
+            return {
+                "text": "Je comprends parfaitement. Laissez-moi juste vous dire en 30 secondes pourquoi cela pourrait vous intéresser malgré tout.",
+                "action": "continue",
+                "confidence": 0.7
+            }
+        
+        elif any(word in client_lower for word in ["qui êtes", "d'où", "comment"]):
+            return {
+                "text": f"Je suis {self.current_scenario.get('agent_name', 'Marc')} de {self.current_scenario.get('company', 'Patrimoine Conseil')}. Nous aidons nos clients à optimiser leur épargne.",
+                "action": "continue", 
+                "confidence": 0.8
+            }
+        
+        elif any(word in client_lower for word in ["combien", "prix", "coût"]):
+            return {
+                "text": f"Nous pouvons commencer avec seulement {self.current_scenario.get('product_price', '500€')}. L'important c'est de commencer petit et voir les résultats.",
+                "action": "continue",
+                "confidence": 0.8
+            }
+        
+        elif turn_count > 7:  # Conversation trop longue
+            return {
+                "text": "Je vois que vous avez des questions importantes. Accepteriez-vous que je vous rappelle demain pour en discuter plus calmement ?",
+                "action": "return_script",
+                "confidence": 0.6
+            }
+        
+        else:  # Réponse générique
+            return {
+                "text": "C'est une excellente question. Laissez-moi vous expliquer simplement comment cela fonctionne.",
+                "action": "continue",
+                "confidence": 0.5
+            }
+    
+    def _client_wants_to_hang_up(self, response: str) -> bool:
+        """Détecte si le client veut clairement raccrocher"""
+        hangup_signals = [
+            "raccrocher", "raccrochez", "au revoir", "bye", "stop", "arrêt", 
+            "termine", "fini", "ça suffit", "j'arrête", "plus jamais"
+        ]
+        
+        response_lower = response.lower()
+        return any(signal in response_lower for signal in hangup_signals)
     
     def _analyze_final_result(self, conversation_flow: List[Dict]) -> bool:
         """Analyse le résultat final de la conversation et met à jour le statut contact"""

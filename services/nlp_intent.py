@@ -667,6 +667,70 @@ Réponds UNIQUEMENT en JSON: {{"intent": "...", "confidence": 0.9, "contextual_r
             health["status"] = "degraded"
         
         return health
+    
+    def _call_ollama_direct(self, prompt: str) -> Optional[Dict]:
+        """
+        Appel direct à Ollama pour génération de texte freestyle
+        Utilisé par le mode freestyle du scenario generator
+        """
+        if not self.is_available or not self.ollama_client:
+            self.logger.warning("❌ Ollama non disponible pour appel direct")
+            return None
+        
+        try:
+            # Préparer le prompt avec contexte de conversation
+            full_prompt = f"""Tu es un agent commercial expert. Réponds uniquement en JSON valide.
+
+{prompt}
+
+Réponds EXACTEMENT dans ce format JSON:
+{{"text": "ta réponse commerciale (2-3 phrases)", "action": "continue|return_script|close_success|close_fail", "confidence": 0.8}}
+"""
+            
+            # Appel Ollama
+            response = self.ollama_client.generate(
+                model=self.model_name,
+                prompt=full_prompt,
+                options={
+                    "temperature": 0.3,  # Plus créatif pour le freestyle
+                    "top_p": 0.9,
+                    "top_k": 40
+                }
+            )
+            
+            if response and 'response' in response:
+                response_text = response['response'].strip()
+                
+                # Tenter de parser le JSON
+                try:
+                    import json
+                    # Extraire JSON de la réponse si nécessaire
+                    json_start = response_text.find('{')
+                    json_end = response_text.rfind('}') + 1
+                    
+                    if json_start != -1 and json_end > json_start:
+                        json_str = response_text[json_start:json_end]
+                        result = json.loads(json_str)
+                        
+                        # Valider la structure
+                        if "text" in result and "action" in result:
+                            self.logger.info(f"🤖 Ollama direct: {result['text'][:50]}... → {result['action']}")
+                            return result
+                    
+                except json.JSONDecodeError:
+                    self.logger.warning("⚠️ Réponse Ollama non-JSON, extraction manuelle")
+                
+                # Fallback: extraire manuellement
+                return {
+                    "text": response_text[:200] + "..." if len(response_text) > 200 else response_text,
+                    "action": "continue",
+                    "confidence": 0.5
+                }
+                
+        except Exception as e:
+            self.logger.error(f"❌ Erreur appel Ollama direct: {e}")
+            
+        return None
 
 # Instance globale (singleton pattern comme autres services MiniBotPanel)
 intent_engine = IntentEngine()
