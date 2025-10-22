@@ -91,13 +91,8 @@ class ScenarioManager:
         except ImportError:
             pass
         
-        # PRIORITÉ 3: Fallback scénario de base
-        try:
-            from scenarios import scenario_production
-            logger.warning("⚠️ Fallback sur scénario de base")
-            return scenario_production, "fallback_production", None
-        except ImportError:
-            pass
+        # PRIORITÉ 3: Fallback scénario de base (supprimé - scenarios.py n'existe plus)
+        # Ancien code supprimé car scenarios.py n'existe plus depuis refactoring
         
         return None, None, None
 

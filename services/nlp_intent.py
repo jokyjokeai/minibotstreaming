@@ -204,25 +204,11 @@ QUALIFICATION: livret A, PEL, assurance-vie, inflation, conseiller bancaire
 """
 
     def _load_dynamic_prompts(self) -> Dict[str, Any]:
-        """Charge les prompts dynamiques depuis prompts_config.json"""
-        try:
-            import json
-            import os
-            
-            # Chemin vers prompts_config.json
-            prompts_path = os.path.join(os.path.dirname(__file__), '..', 'prompts_config.json')
-            
-            if os.path.exists(prompts_path):
-                with open(prompts_path, 'r', encoding='utf-8') as f:
-                    prompts_data = json.load(f)
-                
-                self.logger.info(f"✅ Prompts dynamiques chargés: {len(prompts_data)} sections")
-                return prompts_data
-            
-        except Exception as e:
-            self.logger.warning(f"⚠️ Impossible de charger les prompts dynamiques: {e}")
+        """Charge les prompts dynamiques (prompts_config.json supprimé - utilise prompts par défaut)"""
+        # Ancien système prompts_config.json supprimé car remplacé par scenario_generator
+        # Les prompts sont maintenant générés dynamiquement dans chaque scénario
         
-        # Fallback - prompts par défaut
+        # Prompts par défaut intégrés
         return {
             "company_info": {"name": "France Patrimoine", "tone": "professionnel"},
             "conversation_style": {"personality": "Thierry", "approach": "Questions simples"},

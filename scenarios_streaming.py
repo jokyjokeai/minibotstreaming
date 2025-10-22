@@ -20,14 +20,10 @@ logger = get_logger(__name__)
 # Import des services (avec fallback)
 import config
 
-# Services assemblage et transcription (existants gardés)
-try:
-    from services.audio_assembly_service import audio_assembly_service
-    from services.transcript_service import transcript_service
-    ASSEMBLY_AVAILABLE = True
-except Exception as e:
-    logger.warning(f"⚠️ Audio assembly/transcript services not available: {e}")
-    ASSEMBLY_AVAILABLE = False
+# Services assemblage et transcription (supprimés - remplacés par post_call_recording_service)
+# Ancien système audio_assembly_service supprimé car obsolète
+# Maintenant on utilise MixMonitor + post_call_recording_service pour enregistrement complet
+ASSEMBLY_AVAILABLE = False
 
 # Services streaming (requis)
 logger.info("🤖 Loading streaming services for scenarios...")

@@ -283,14 +283,11 @@ class RobotARIStreaming:
             # Créer enregistrement Call en DB
             call_record = self._create_call_record(channel_id, phone_number, campaign_id, "classic")
             
-            # Exécuter scénario classic (logique existante)
-            if scenario == "production":
-                # Utiliser la fonction existante
-                from scenarios import scenario_production
-                scenario_production(self, channel_id, phone_number, campaign_id)
-            else:
-                from scenarios import scenario_test
-                scenario_test(self, channel_id, phone_number, campaign_id)
+            # Exécuter scénario classic (logique supprimée)
+            # ANCIEN CODE SUPPRIMÉ: scenarios.py n'existe plus depuis refactoring
+            # Tous les appels utilisent maintenant le mode streaming ou les scénarios générés
+            logger.warning("⚠️ Mode classic obsolète - utiliser streaming ou scénarios générés")
+            return
             
         except Exception as e:
             logger.error(f"❌ Error in classic call handler: {e}", exc_info=True)
