@@ -290,17 +290,32 @@ class ScenarioGenerator:
         
         objection_responses = {}
         
+        print(f"\n{Colors.CYAN}🎯 CONFIGURATION GLOBALE DES OBJECTIONS{Colors.NC}")
+        print("Donnez vos réponses clés, Ollama va les enrichir et proposer des variantes")
+        
         for objection in objections:
             print(f"\n{Colors.RED}🚫 Objection: '{objection}'{Colors.NC}")
-            response = input(f"💬 Votre réponse: ").strip()
+            user_response = input(f"💬 Votre réponse: ").strip()
             
-            if response:
-                # Demander une alternative si la première réponse ne marche pas
-                fallback = input(f"🔄 Réponse alternative (si la 1ère ne fonctionne pas): ").strip()
+            if user_response:
+                # Utiliser Ollama pour enrichir la réponse
+                enriched_responses = self._enrich_response_with_ollama(
+                    objection, 
+                    user_response, 
+                    self.current_scenario
+                )
+                
+                # Présenter les options à l'utilisateur
+                selected_responses = self._validate_ollama_responses(
+                    objection, 
+                    user_response, 
+                    enriched_responses
+                )
                 
                 objection_responses[objection] = {
-                    "primary_response": response,
-                    "fallback_response": fallback if fallback else response,
+                    "primary_response": selected_responses["primary"],
+                    "fallback_response": selected_responses["fallback"],
+                    "alternatives": selected_responses["alternatives"],
                     "tone": self.current_scenario["agent_personality"][0],
                     "context": f"Objection sur {self.current_scenario['product_name']}"
                 }
@@ -379,6 +394,99 @@ class ScenarioGenerator:
                 print(f"❌ Choix invalide, ${var_name} ignoré")
         
         self.current_scenario["variables"] = variables
+
+    def _enrich_response_with_ollama(self, objection: str, user_response: str, scenario_context: Dict) -> List[str]:
+        """Utilise Ollama pour enrichir et générer des variantes de réponse"""
+        try:
+            import requests
+            
+            # Construire le contexte pour Ollama
+            context = f"""
+Produit: {scenario_context.get('product_name', 'N/A')}
+Secteur: {scenario_context.get('sector', 'N/A')}
+Personnalité agent: {scenario_context.get('agent_personality', ['Professionnel'])[0]}
+Entreprise: {scenario_context.get('company', 'N/A')}
+
+Objection client: "{objection}"
+Réponse utilisateur: "{user_response}"
+
+Génère 3 variantes améliorées de cette réponse pour un appel téléphonique commercial.
+Améliore l'orthographe, la structure et ajoute des arguments convaincants.
+Garde le sens original mais rends plus professionnel et persuasif.
+Réponds UNIQUEMENT avec les 3 variantes, une par ligne, sans numérotation.
+"""
+            
+            payload = {
+                "model": "llama3.2:1b",
+                "prompt": context,
+                "stream": False,
+                "options": {
+                    "temperature": 0.7,
+                    "num_predict": 150
+                }
+            }
+            
+            response = requests.post("http://localhost:11434/api/generate", json=payload, timeout=15)
+            
+            if response.status_code == 200:
+                result = response.json()
+                ollama_text = result.get("response", "").strip()
+                
+                # Diviser en variantes
+                variants = [line.strip() for line in ollama_text.split('\n') if line.strip()]
+                
+                # Garder les 3 meilleures
+                return variants[:3] if variants else [user_response]
+            else:
+                self.logger.warning(f"Ollama indisponible: {response.status_code}")
+                return [user_response]
+                
+        except Exception as e:
+            self.logger.warning(f"Erreur enrichissement Ollama: {e}")
+            return [user_response]
+    
+    def _validate_ollama_responses(self, objection: str, original: str, enriched: List[str]) -> Dict[str, str]:
+        """Présente les options enrichies et laisse l'utilisateur choisir"""
+        print(f"\n{Colors.GREEN}🤖 Ollama a généré ces variantes:{Colors.NC}")
+        print(f"   Original: {original}")
+        
+        options = [original] + enriched
+        
+        for i, option in enumerate(options):
+            print(f"   {i+1}. {option}")
+        
+        # Choix de la réponse principale
+        try:
+            primary_choice = input(f"\nChoisissez la réponse principale (1-{len(options)}): ").strip()
+            primary_idx = int(primary_choice) - 1
+            primary = options[primary_idx] if 0 <= primary_idx < len(options) else options[0]
+        except:
+            primary = options[0]
+        
+        # Choix de la réponse de fallback
+        remaining_options = [opt for opt in options if opt != primary]
+        if remaining_options:
+            print(f"\nOptions pour réponse alternative:")
+            for i, option in enumerate(remaining_options):
+                print(f"   {i+1}. {option}")
+            
+            try:
+                fallback_choice = input(f"Choisissez la réponse alternative (1-{len(remaining_options)} ou Enter pour auto): ").strip()
+                if fallback_choice:
+                    fallback_idx = int(fallback_choice) - 1
+                    fallback = remaining_options[fallback_idx] if 0 <= fallback_idx < len(remaining_options) else remaining_options[0]
+                else:
+                    fallback = remaining_options[0]
+            except:
+                fallback = remaining_options[0]
+        else:
+            fallback = primary
+        
+        return {
+            "primary": primary,
+            "fallback": fallback,
+            "alternatives": [opt for opt in options if opt not in [primary, fallback]]
+        }
 
     def _create_scenario_flow(self):
         """Création interactive du flow du scénario"""
@@ -812,10 +920,99 @@ class {scenario_name.title()}Scenario:
         return None
     
     def _listen_with_barge_in(self, robot, channel_id: str, max_wait: float, interruption_handling: str) -> str:
-        """Écoute avec support barge-in"""
-        # TODO: Implémenter écoute avec interruption
-        # Pour l'instant, écoute simple
-        return self._listen_simple(robot, channel_id, max_wait)
+        """Écoute avec support barge-in et gestion intelligente d'interruption"""
+        try:
+            # Démarrer l'écoute avec détection d'interruption
+            response = self._listen_simple(robot, channel_id, max_wait)
+            
+            # Analyser si c'est une interruption qui nécessite une réponse automatique
+            interruption_intent = self._detect_interruption_intent(response)
+            
+            if interruption_intent:
+                # Générer une réponse automatique appropriée
+                auto_response = self._generate_interruption_response(interruption_intent, response)
+                
+                # Jouer la réponse automatique
+                if auto_response:
+                    self._speak_text(robot, channel_id, auto_response)
+                    
+                    # Selon la stratégie, continuer ou recommencer
+                    if interruption_handling == "restart":
+                        return "RESTART_STEP"
+                    elif interruption_handling == "continue":
+                        # Écouter à nouveau après la réponse automatique
+                        return self._listen_simple(robot, channel_id, max_wait)
+                    # ignore = continuer normalement
+            
+            return response
+            
+        except Exception as e:
+            self.logger.error(f"Erreur écoute barge-in: {{e}}")
+            return self._listen_simple(robot, channel_id, max_wait)
+    
+    def _detect_interruption_intent(self, response: str) -> Optional[str]:
+        """Détecte le type d'interruption pour générer une réponse automatique appropriée"""
+        if not response or len(response.strip()) < 2:
+            return None
+            
+        response_lower = response.lower().strip()
+        
+        # Patterns d'interruption courantes
+        interruption_patterns = {{
+            "qui_etes_vous": ["qui êtes-vous", "qui vous êtes", "vous êtes qui", "c'est qui", "qui appelle"],
+            "pas_compris": ["quoi", "comment", "hein", "pardon", "j'ai pas compris", "pas compris"],
+            "mal_entendu": ["j'entends mal", "entends pas", "plus fort", "mal", "coupé"],
+            "pas_interesse": ["pas intéressé", "ça m'intéresse pas", "me dérange pas", "raccrochez"],
+            "rappeler": ["rappeler", "rappelez", "plus tard", "pas le temps", "occupé"],
+            "trop_cher": ["trop cher", "coûte cher", "prix", "combien", "tarif"],
+            "deja_quelque_chose": ["j'ai déjà", "déjà", "satisfait", "ma banque"],
+            "arnaque": ["arnaque", "arnaqueur", "escroquerie", "sérieux"]
+        }}
+        
+        for intent, patterns in interruption_patterns.items():
+            for pattern in patterns:
+                if pattern in response_lower:
+                    return intent
+        
+        return None
+    
+    def _generate_interruption_response(self, intent: str, original_response: str) -> Optional[str]:
+        """Génère une réponse automatique selon le type d'interruption"""
+        # Variables dynamiques disponibles
+        agent_name = "{self.current_scenario.get('agent_name', 'votre conseiller')}"
+        company = "{self.current_scenario.get('company', 'notre entreprise')}"
+        
+        interruption_responses = {{
+            "qui_etes_vous": f"Je suis {{agent_name}} de {{company}}, je vous contacte concernant votre épargne.",
+            
+            "pas_compris": "Excusez-moi, je n'ai pas été assez clair. Laissez-moi reformuler...",
+            
+            "mal_entendu": "Je vous entends un peu mal, je vais parler plus distinctement. Puis-je continuer ?",
+            
+            "pas_interesse": "Je comprends parfaitement. Laissez-moi juste vous expliquer en 30 secondes pourquoi cela pourrait vous intéresser.",
+            
+            "rappeler": "Bien sûr, quand puis-je vous rappeler ? Demain matin ou plutôt en fin d'après-midi ?",
+            
+            "trop_cher": "Je comprends votre préoccupation. Justement, nous pouvons commencer avec seulement 500 euros pour un test.",
+            
+            "deja_quelque_chose": "C'est parfait d'avoir déjà quelque chose ! Il ne faut jamais mettre tous ses œufs dans le même panier. Entre nous, combien vous rapporte actuellement votre placement ?",
+            
+            "arnaque": "Je comprends votre méfiance, c'est même intelligent. C'est d'ailleurs pour cela que nous proposons toujours de commencer petit, avec 500 euros maximum."
+        }}
+        
+        return interruption_responses.get(intent, None)
+    
+    def _speak_text(self, robot, channel_id: str, text: str):
+        """Fait parler le robot avec le texte donné"""
+        try:
+            # Si TTS disponible, utiliser le service TTS
+            if hasattr(self, 'tts_service') and self.tts_service:
+                self.tts_service.synthesize_and_play(text, channel_id)
+            else:
+                # Fallback : utiliser le robot directement
+                robot.speak(channel_id, text)
+        except Exception as e:
+            self.logger.error(f"Erreur synthèse vocale: {{e}}")
     
     def _listen_simple(self, robot, channel_id: str, max_wait: float) -> str:
         """Écoute simple sans barge-in"""
