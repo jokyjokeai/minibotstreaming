@@ -11,9 +11,9 @@ requests==2.31.0
 vosk==0.3.45
 webrtcvad==2.0.10
 websockets==12.0
-numpy==1.24.3
+numpy>=1.22.0,<1.25.0
 pyaudio==0.2.14
-soundfile==0.13.1
+soundfile>=0.12.0
 
 # NLP & Intent (Local)
 ollama==0.3.3
@@ -31,13 +31,13 @@ pyyaml==6.0.1
 websocket-client==1.7.0
 
 # Audio Processing
-librosa==0.10.1
-scipy==1.15.3
+librosa>=0.10.0
+scipy>=1.10.0,<2.0.0
 
-# TTS with Voice Cloning (Free)
-TTS==0.22.0
+# TTS with Voice Cloning (Compatible)
+TTS>=0.22.0
 torch>=2.0.0
 torchaudio>=2.0.0
-transformers==4.35.2
-datasets==2.14.6
-accelerate==0.24.1
+transformers>=4.30.0
+datasets>=2.10.0
+accelerate>=0.20.0
