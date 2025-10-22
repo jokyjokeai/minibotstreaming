@@ -17,6 +17,13 @@ from datetime import datetime
 from queue import Queue, Empty
 import struct
 
+# Ajouter le répertoire parent au PYTHONPATH pour les imports
+import sys
+from pathlib import Path
+current_dir = Path(__file__).parent
+parent_dir = current_dir.parent
+sys.path.insert(0, str(parent_dir))
+
 # Import des configurations et logger existants
 import config
 from logger_config import get_logger

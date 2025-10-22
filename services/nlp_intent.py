@@ -11,6 +11,13 @@ import re
 from typing import Dict, Optional, Tuple, Any
 from datetime import datetime
 
+# Ajouter le répertoire parent au PYTHONPATH pour les imports
+import sys
+from pathlib import Path
+current_dir = Path(__file__).parent
+parent_dir = current_dir.parent
+sys.path.insert(0, str(parent_dir))
+
 # Import des configurations et services existants
 import config
 from logger_config import get_logger, log_function_call, log_performance_summary, log_exception, log_memory_usage

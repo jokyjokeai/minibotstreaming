@@ -4,6 +4,13 @@ Streaming Stats Service - MiniBotPanel v2
 Service pour analyser et fournir les statistiques streaming
 """
 
+# Ajouter le répertoire parent au PYTHONPATH pour les imports
+import sys
+from pathlib import Path
+current_dir = Path(__file__).parent
+parent_dir = current_dir.parent
+sys.path.insert(0, str(parent_dir))
+
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
