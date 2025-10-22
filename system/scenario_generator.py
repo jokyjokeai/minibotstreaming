@@ -323,11 +323,25 @@ class ScenarioGenerator:
         self.current_scenario["faq"] = faq
 
     def _setup_variables(self):
-        """Configuration des variables dynamiques"""
+        """Configuration des variables dynamiques avec sources BDD"""
         print(f"\n{Colors.PURPLE}🔧 VARIABLES DYNAMIQUES{Colors.NC}")
         print("-" * 30)
         print("Configurez les variables qui seront remplacées dans les textes")
         print("Exemple: 'Bonjour $nom, je suis $agent de $entreprise'")
+        
+        # Options de données disponibles depuis la BDD
+        db_sources = {
+            "1": {"code": "contact.first_name", "description": "Prénom du contact"},
+            "2": {"code": "contact.last_name", "description": "Nom de famille du contact"},
+            "3": {"code": "f'{contact.first_name} {contact.last_name}'", "description": "Nom complet du contact"},
+            "4": {"code": "contact.city", "description": "Ville du contact"},
+            "5": {"code": "contact.phone", "description": "Numéro de téléphone"},
+            "6": {"code": "contact.email", "description": "Email du contact"},
+            "7": {"code": "contact.last_call_date", "description": "Date de dernière interaction"},
+            "8": {"code": "contact.status", "description": "Statut du contact"},
+            "9": {"code": "contact.company", "description": "Entreprise du contact"},
+            "10": {"code": "contact.notes", "description": "Notes sur le contact"}
+        }
         
         variables = {}
         
@@ -339,13 +353,36 @@ class ScenarioGenerator:
                 break
                 
             var_description = input(f"📄 Description de ${var_name}: ").strip()
-            var_default = input(f"🔧 Valeur par défaut: ").strip()
             
-            variables[var_name] = {
-                "description": var_description,
-                "default": var_default,
-                "source": "manual"  # manual, database, api
-            }
+            print(f"\n🔧 SOURCE DE DONNÉES pour ${var_name}:")
+            for key, info in db_sources.items():
+                print(f"   {key}. {info['description']}")
+            print(f"   11. Valeur fixe (saisie manuelle)")
+            
+            source_choice = input("\nChoisissez la source (1-11): ").strip()
+            
+            if source_choice in db_sources:
+                # Source BDD dynamique
+                variables[var_name] = {
+                    "description": var_description,
+                    "source": "database",
+                    "code": db_sources[source_choice]["code"],
+                    "db_description": db_sources[source_choice]["description"]
+                }
+                print(f"✅ ${var_name} sera récupéré dynamiquement: {db_sources[source_choice]['description']}")
+                
+            elif source_choice == "11":
+                # Valeur fixe
+                var_value = input(f"🔧 Valeur fixe pour ${var_name}: ").strip()
+                variables[var_name] = {
+                    "description": var_description,
+                    "source": "manual",
+                    "value": var_value
+                }
+                print(f"✅ ${var_name} = '{var_value}' (valeur fixe)")
+                
+            else:
+                print(f"❌ Choix invalide, ${var_name} ignoré")
         
         self.current_scenario["variables"] = variables
 
@@ -551,7 +588,7 @@ from typing import Dict, Any, Optional, Tuple
 
 logger = get_logger(__name__)
 
-# Variables du scénario
+# Variables du scénario (configuration des sources)
 SCENARIO_VARIABLES = {json.dumps(self.current_scenario["variables"], indent=4)}
 
 # Configuration streaming
@@ -637,20 +674,32 @@ class {scenario_name.title()}Scenario:
             return False
     
     def _resolve_variables(self, phone_number: str) -> Dict[str, str]:
-        """Résout les variables dynamiques"""
+        """Résout les variables dynamiques depuis la BDD et valeurs fixes"""
         resolved = {{}}
+        
+        # Récupérer le contact depuis la BDD
+        contact = self._get_contact_by_phone(phone_number)
         
         for var_name, var_config in self.variables.items():
             if var_config["source"] == "manual":
-                resolved[var_name] = var_config["default"]
+                # Valeur fixe
+                resolved[var_name] = var_config["value"]
             elif var_config["source"] == "database":
-                # TODO: Récupérer depuis la base
-                resolved[var_name] = var_config["default"]
-            elif var_config["source"] == "api":
-                # TODO: Récupérer depuis API
-                resolved[var_name] = var_config["default"]
+                # Valeur dynamique depuis BDD
+                try:
+                    if contact:
+                        # Exécuter le code dynamiquement (ex: contact.first_name)
+                        value = eval(var_config["code"])
+                        resolved[var_name] = str(value) if value is not None else ""
+                    else:
+                        resolved[var_name] = f"[Contact non trouvé]"
+                        self.logger.warning(f"Contact non trouvé pour {{phone_number}}")
+                except Exception as e:
+                    resolved[var_name] = f"[Erreur: {{e}}]"
+                    self.logger.error(f"Erreur résolution variable {{var_name}}: {{e}}")
             else:
-                resolved[var_name] = var_config["default"]
+                # Fallback
+                resolved[var_name] = var_config.get("value", "")
         
         # Variables système automatiques
         resolved.update({{
@@ -661,6 +710,19 @@ class {scenario_name.title()}Scenario:
         }})
         
         return resolved
+    
+    def _get_contact_by_phone(self, phone_number: str):
+        """Récupère le contact depuis la BDD par numéro de téléphone"""
+        try:
+            from database import SessionLocal
+            from models import Contact
+            
+            with SessionLocal() as session:
+                contact = session.query(Contact).filter(Contact.phone == phone_number).first()
+                return contact
+        except Exception as e:
+            self.logger.error(f"Erreur récupération contact {{phone_number}}: {{e}}")
+            return None
     
     def _execute_flow(self, robot, channel_id: str, phone_number: str, variables: Dict[str, str]) -> bool:
         """Exécute le flow principal du scénario"""
