@@ -178,12 +178,12 @@ class ScenarioGenerator:
         print(f"\n{Colors.YELLOW}🎯 SECTEUR D'ACTIVITÉ{Colors.NC}")
         sectors = [
             "Finance/Patrimoine", "Immobilier", "Formation", "Services", 
-            "E-commerce", "Technologie", "Santé", "Juridique", "Autre"
+            "E-commerce", "Technologie", "Santé", "Juridique", "Energie renouvelable", "Autre"
         ]
         for i, sector in enumerate(sectors, 1):
             print(f"   {i}. {sector}")
         
-        sector_choice = input("\nChoisissez (1-9): ").strip()
+        sector_choice = input("\nChoisissez (1-10): ").strip()
         try:
             self.current_scenario["sector"] = sectors[int(sector_choice) - 1]
         except:
@@ -262,6 +262,13 @@ class ScenarioGenerator:
                 "Je peux apprendre tout seul en ligne",
                 "Votre formation n'est pas certifiée/reconnue",
                 "Je ne suis pas sûr que ça m'aide dans mon travail"
+            ],
+            "Energie renouvelable": [
+                "L'installation coûte trop cher",
+                "Mon toit n'est pas adapté aux panneaux",
+                "Je suis locataire, ce n'est pas possible",
+                "Les économies ne sont pas garanties",
+                "Les panneaux solaires ne marchent pas bien ici"
             ]
         }
         
