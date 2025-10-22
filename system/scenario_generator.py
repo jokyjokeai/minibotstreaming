@@ -12,7 +12,20 @@ from pathlib import Path
 from typing import Dict, List, Any, Optional
 from datetime import datetime
 
-from logger_config import get_logger, log_function_call
+# Ajouter le répertoire parent au PYTHONPATH pour les imports
+current_dir = Path(__file__).parent
+parent_dir = current_dir.parent
+sys.path.insert(0, str(parent_dir))
+
+try:
+    from logger_config import get_logger, log_function_call
+except ImportError:
+    # Fallback simple si logger_config n'est pas disponible
+    import logging
+    def get_logger(name):
+        return logging.getLogger(name)
+    def log_function_call(func):
+        return func
 
 logger = get_logger(__name__)
 
@@ -511,10 +524,20 @@ Généré le: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
 """
 
 from datetime import datetime
-from sqlalchemy.orm import Session
-from database import SessionLocal
-from models import Call, CallInteraction, Contact
-from logger_config import get_logger, log_function_call, log_memory_usage
+
+# Imports avec gestion d'erreur
+try:
+    from sqlalchemy.orm import Session
+    from database import SessionLocal
+    from models import Call, CallInteraction, Contact
+    from logger_config import get_logger, log_function_call, log_memory_usage
+except ImportError as e:
+    print(f"Warning: Some modules not available: {e}")
+    def get_logger(name): 
+        import logging
+        return logging.getLogger(name)
+    def log_function_call(func): return func
+    def log_memory_usage(): pass
 import time
 import os
 from typing import Dict, Any, Optional, Tuple
@@ -892,10 +915,19 @@ Script de test pour le scénario {self.current_scenario["name"]}
 
 import sys
 import os
-sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(__file__))))
 
-from {scenario_name}_scenario import execute_{scenario_name}
-from logger_config import get_logger
+# Ajouter le répertoire parent au PYTHONPATH
+current_dir = os.path.dirname(__file__)
+parent_dir = os.path.dirname(current_dir)
+sys.path.insert(0, parent_dir)
+
+try:
+    from {scenario_name}_scenario import execute_{scenario_name}
+    from logger_config import get_logger
+except ImportError as e:
+    print(f"Warning: Import error: {{e}}")
+    import logging
+    def get_logger(name): return logging.getLogger(name)
 
 logger = get_logger(__name__)
 
