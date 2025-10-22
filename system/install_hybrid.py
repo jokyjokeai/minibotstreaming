@@ -532,10 +532,10 @@ class StreamingServicesInstaller:
         time.sleep(5)
     
     def download_models(self):
-        """Télécharge les modèles Ollama"""
-        log("📥 Downloading Ollama models")
+        """Télécharge les modèles Ollama optimisés"""
+        log("📥 Downloading Ollama models (optimized selection)")
         
-        models = ["phi3:mini", "mistral:7b-instruct"]  # Modèles légers
+        models = ["llama3.2:1b"]  # Modèle optimal pour intent français
         
         for model in models:
             try:
@@ -654,7 +654,7 @@ VOSK_SAMPLE_RATE=16000
 # OLLAMA (Local NLP)
 # =============================================================================
 OLLAMA_URL=http://localhost:11434
-OLLAMA_MODEL=phi3:mini
+OLLAMA_MODEL=llama3.2:1b
 OLLAMA_TIMEOUT=10
 OLLAMA_FALLBACK_TO_KEYWORDS=true
 
@@ -923,6 +923,7 @@ class StreamingInstaller:
         self.log_file = setup_logging()
         # Répertoire du projet MiniBotPanel (parent du répertoire system)
         self.project_dir = Path(__file__).parent.parent
+        self.project_root = self.project_dir  # Alias pour compatibilité
         
     def run_installation(self):
         """Lance l'installation complète"""
@@ -1453,17 +1454,14 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
         except:
             log("❌ Asterisk: Failed", "error")
         
-        # Test Ollama
+        # Test Ollama + modèle llama3.2:1b
         tests_total += 1
         try:
-            result = run_cmd("curl -s http://localhost:11434/api/version", check=False)
-            if result.returncode == 0:
-                log("✅ Ollama: Running")
-                tests_passed += 1
-            else:
-                log("❌ Ollama: Failed", "error")
-        except:
-            log("❌ Ollama: Failed", "error")
+            self._test_ollama_system()
+            log("✅ Ollama + llama3.2:1b: Working")
+            tests_passed += 1
+        except Exception as e:
+            log(f"❌ Ollama: Failed - {e}", "error")
         
         # Test modèles Vosk
         tests_total += 1
@@ -1493,6 +1491,15 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
             tests_passed += 1
         except Exception as e:
             log(f"❌ Vosk Recognition: Failed - {e}", "error")
+        
+        # Test TTS Coqui XTTS v2
+        tests_total += 1
+        try:
+            self._test_tts_system()
+            log("✅ TTS Voice Cloning: Working")
+            tests_passed += 1
+        except Exception as e:
+            log(f"❌ TTS Voice Cloning: Failed - {e}", "error")
         
         log(f"📊 Tests: {tests_passed}/{tests_total} passed")
         
@@ -1595,6 +1602,106 @@ if __name__ == "__main__":
         
         # Nettoyer
         run_cmd(f"rm -f {target_audio} {test_script_path}", check=False)
+    
+    def _test_ollama_system(self):
+        """Test du système Ollama avec modèle llama3.2:1b"""
+        log("🧠 Testing Ollama system (llama3.2:1b)")
+        
+        try:
+            import requests
+            
+            # Test de connexion Ollama
+            response = requests.get("http://localhost:11434/api/tags", timeout=10)
+            if response.status_code == 200:
+                models = response.json().get("models", [])
+                model_names = [m.get("name", "") for m in models]
+                
+                if "llama3.2:1b" in model_names:
+                    log("✅ Ollama llama3.2:1b model available")
+                else:
+                    log(f"⚠️ Available models: {model_names}", "warning")
+                    raise Exception("llama3.2:1b model not found")
+                
+                # Test de génération simple
+                test_prompt = {"model": "llama3.2:1b", "prompt": "Bonjour", "stream": False}
+                response = requests.post("http://localhost:11434/api/generate", json=test_prompt, timeout=30)
+                
+                if response.status_code == 200:
+                    log("✅ Ollama generation test successful")
+                else:
+                    raise Exception(f"Ollama generation failed: {response.status_code}")
+            else:
+                raise Exception(f"Ollama not responding: {response.status_code}")
+                
+        except Exception as e:
+            log(f"❌ Ollama system test failed: {e}", "error")
+            raise Exception(f"Ollama system validation failed: {e}")
+    
+    def _test_tts_system(self):
+        """Test le système TTS Coqui XTTS v2"""
+        log("🎙️ Testing TTS voice cloning system")
+        
+        # Test script TTS simple
+        test_script = """
+import sys
+try:
+    from TTS.api import TTS
+    import torch
+    
+    # Détection device
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    print(f"TTS Device: {device}")
+    
+    # Test import et initialisation
+    tts = TTS('tts_models/multilingual/multi-dataset/xtts_v2', device=device)
+    print("TTS Model loaded successfully")
+    
+    # Test génération simple
+    test_text = "Test de synthèse vocale française"
+    output_file = "/tmp/test_tts_output.wav"
+    
+    tts.tts_to_file(
+        text=test_text,
+        file_path=output_file,
+        language="fr"
+    )
+    
+    # Vérifier que le fichier audio a été créé
+    import os
+    if os.path.exists(output_file) and os.path.getsize(output_file) > 1000:
+        print("SUCCESS: TTS audio generated")
+        os.remove(output_file)
+        exit(0)
+    else:
+        print("ERROR: TTS audio not generated or too small")
+        exit(1)
+        
+except ImportError as e:
+    print(f"ERROR: TTS import failed - {e}")
+    exit(1)
+except Exception as e:
+    print(f"ERROR: TTS test failed - {e}")
+    exit(1)
+"""
+        
+        # Écrire et exécuter le script de test
+        test_script_path = Path("/tmp/test_tts.py")
+        with open(test_script_path, "w") as f:
+            f.write(test_script)
+        
+        # Exécuter le test
+        result = run_cmd(f"python3 {test_script_path}", 
+                        "Testing TTS voice synthesis", 
+                        timeout=60, 
+                        check=False)
+        
+        if result.returncode == 0 and "SUCCESS" in result.stdout:
+            log("✅ TTS voice cloning test passed")
+        else:
+            raise Exception(f"TTS test failed: {result.stderr}")
+        
+        # Nettoyer
+        run_cmd(f"rm -f {test_script_path}", check=False)
     
     def _apply_streaming_optimizations(self):
         """Applique automatiquement toutes les optimisations streaming pour performances maximales"""
