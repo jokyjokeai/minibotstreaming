@@ -417,7 +417,36 @@ class ScenarioGenerator:
         try:
             import requests
             
-            # Construire le contexte pour Ollama
+            # Logique adaptative selon si l'utilisateur a fourni une réponse
+            if user_response and user_response.strip():
+                # Cas 1: Utilisateur a fourni une réponse → 1 original + 2 variantes (3 total)
+                prompt_instruction = f"""
+Réponse utilisateur: "{user_response}"
+
+Génère exactement 2 variantes améliorées de cette réponse (taille moyenne, 2-3 phrases).
+Améliore l'orthographe, la structure et ajoute des arguments convaincants.
+Garde le sens original mais rends plus professionnel et persuasif.
+
+Format requis:
+1. [première variante améliorée]
+2. [deuxième variante améliorée]
+
+Réponds UNIQUEMENT avec ces 2 variantes numérotées."""
+            else:
+                # Cas 2: Pas de réponse → 4 variantes complètes
+                prompt_instruction = f"""
+Génère exactement 4 variantes de réponse complètes pour cette objection (taille moyenne, 2-3 phrases chacune).
+Chaque réponse doit être professionnelle, convaincante et adaptée au contexte commercial.
+
+Format requis:
+1. [première réponse complète]
+2. [deuxième réponse complète]  
+3. [troisième réponse complète]
+4. [quatrième réponse complète]
+
+Réponds UNIQUEMENT avec ces 4 variantes numérotées."""
+            
+            # Construire le contexte complet pour Ollama
             context = f"""
 Produit: {scenario_context.get('product_name', 'N/A')}
 Secteur: {scenario_context.get('sector', 'N/A')}
@@ -425,12 +454,8 @@ Personnalité agent: {scenario_context.get('agent_personality', ['Professionnel'
 Entreprise: {scenario_context.get('company', 'N/A')}
 
 Objection client: "{objection}"
-Réponse utilisateur: "{user_response}"
 
-Génère 3 variantes améliorées de cette réponse pour un appel téléphonique commercial.
-Améliore l'orthographe, la structure et ajoute des arguments convaincants.
-Garde le sens original mais rends plus professionnel et persuasif.
-Réponds UNIQUEMENT avec les 3 variantes, une par ligne, sans numérotation.
+{prompt_instruction}
 """
             
             payload = {
@@ -522,8 +547,11 @@ Réponds UNIQUEMENT avec les 3 variantes, une par ligne, sans numérotation.
             steps[current_step_id] = step
             flow_order.append(current_step_id)
             
-            # Demander les transitions
-            next_steps = self._configure_step_transitions(step)
+            # Configurer le flow intelligent (pas de transitions manuelles)
+            self._configure_step_flow(step, step.step_type)
+            
+            # Déterminer automatiquement les prochaines étapes selon le flow intelligent
+            next_steps = self._get_automatic_next_steps(step.step_type)
             
             if not next_steps:
                 print(f"{Colors.YELLOW}🏁 Fin du scénario{Colors.NC}")
@@ -619,14 +647,46 @@ Réponds UNIQUEMENT avec les 3 variantes, une par ligne, sans numérotation.
                     step.is_leads_qualifying = False
                     print(f"ℹ️  {step_type.upper()} non-qualifiante pour LEADS")
             
-            # Fichier audio
+            # Fichier audio avec Vosk auto-transcription
             audio_choice = input(f"\n🎵 Audio préenregistré (o/n) ? [n]: ").strip().lower()
             if audio_choice in ['o', 'oui', 'y', 'yes']:
                 step.audio_file = input("Nom du fichier audio (ex: intro.wav): ").strip()
                 step.tts_enabled = False
+                
+                # Utiliser Vosk pour extraire le texte automatiquement
+                print("🎙️ Extraction du texte avec Vosk...")
+                extracted_text = self._extract_text_with_vosk(step.audio_file)
+                if extracted_text:
+                    step.text_content = extracted_text
+                    print(f"✅ Texte extrait: {extracted_text[:100]}...")
+                    
+                    # Demander confirmation/correction
+                    corrected = input(f"📝 Corriger le texte [ou Enter pour garder]: ").strip()
+                    if corrected:
+                        step.text_content = corrected
+                else:
+                    print("❌ Échec extraction Vosk, saisie manuelle:")
+                    step.text_content = input("📝 Texte: ").strip()
             else:
+                # Mode TTS avec correcteur orthographe
                 step.tts_enabled = True
                 step.audio_file = f"{step_id}.wav"  # Sera généré par TTS
+                
+                print("📝 Saisie texte pour TTS:")
+                raw_text = input("Texte: ").strip()
+                
+                # Corriger l'orthographe
+                corrected_text = self._correct_spelling(raw_text)
+                if corrected_text != raw_text:
+                    print(f"✅ Texte corrigé: {corrected_text}")
+                    confirm = input("Accepter la correction ? (o/n) [o]: ").strip().lower()
+                    step.text_content = corrected_text if confirm not in ['n', 'non'] else raw_text
+                else:
+                    step.text_content = raw_text
+                
+                # Pré-générer l'audio TTS
+                print("🎙️ Pré-génération audio TTS...")
+                self._pregenerate_tts_audio(step.text_content, step.audio_file)
         
         # Configuration timing
         try:
@@ -660,54 +720,62 @@ Réponds UNIQUEMENT avec les 3 variantes, une par ligne, sans numérotation.
         
         return step
 
-    def _configure_step_transitions(self, step: ScenarioStep) -> Dict[str, str]:
-        """Configure les transitions selon les réponses du client"""
-        print(f"\n{Colors.BLUE}🔀 CONFIGURATION DES TRANSITIONS{Colors.NC}")
-        print("Que se passe-t-il selon la réponse du client ?")
+    def _configure_step_flow(self, step: ScenarioStep, step_type: str) -> None:
+        """Configure le flow intelligent (plus de transitions manuelles)"""
+        print(f"\n{Colors.BLUE}🎯 FLOW INTELLIGENT AUTOMATIQUE{Colors.NC}")
+        print("Les transitions sont automatiques selon les règles définies !")
         
-        transitions = {}
-        
-        # Réponses possibles
-        print("\nIntentions disponibles:")
-        for i, intent in enumerate(self.available_intents, 1):
-            print(f"   {i:2d}. {intent}")
-        
-        while True:
-            print(f"\n{Colors.CYAN}Transitions actuelles: {step.intent_mapping}{Colors.NC}")
+        # Configuration LEADS optionnelle pour toutes les étapes (sauf intro/close)
+        if step_type not in ["intro", "close_success", "close_echec"]:
+            print(f"\n🎯 QUALIFICATION LEADS CUMULATIVE:")
+            print(f"Cette étape ({step_type}) peut-elle qualifier/disqualifier pour LEADS ?")
+            is_qualifying = input("Étape qualifiante LEADS ? (o/n) [n]: ").strip().lower()
             
-            intent_input = input("\n🎯 Intention client (numéro ou nom, Enter pour terminer): ").strip()
-            if not intent_input:
-                break
-            
-            # Support input numérique
-            intent = None
-            if intent_input.isdigit():
-                idx = int(intent_input) - 1
-                if 0 <= idx < len(self.available_intents):
-                    intent = self.available_intents[idx]
-                else:
-                    print(f"{Colors.RED}Numéro invalide. Choisissez entre 1 et {len(self.available_intents)}{Colors.NC}")
-                    continue
+            if is_qualifying in ['o', 'oui', 'y', 'yes']:
+                step.is_leads_qualifying = True
+                step.required_intent_for_leads = "Positif"  # Toujours positif pour qualification
+                print(f"✅ {step_type.upper()} configurée comme étape qualifiante LEADS")
+                print("   → Réponse POSITIVE requise pour continuer")
+                print("   → Réponse NÉGATIVE = BYE immédiat (close_echec)")
             else:
-                # Support input texte
-                if intent_input in self.available_intents:
-                    intent = intent_input
-                else:
-                    print(f"{Colors.RED}Intention inconnue. Disponibles: {self.available_intents}{Colors.NC}")
-                    continue
+                step.is_leads_qualifying = False
+                print(f"ℹ️  {step_type.upper()} non-qualifiante pour LEADS")
+        else:
+            # Pour intro/hello/retry/close: pas de config LEADS
+            step.is_leads_qualifying = False
             
-            next_step = input(f"➡️  Si '{intent}', aller à l'étape: ").strip()
-            
-            step.intent_mapping[intent] = next_step
-            transitions[next_step] = intent
+        # Afficher les règles automatiques pour info
+        flow_rules = {
+            "intro": "→ hello (toujours)",
+            "hello": "→ question1 (si positif/neutre) ou retry (si négatif)",
+            "retry": "→ question1 (si positif/neutre) ou close_echec (si négatif)",
+            "question": "→ question suivante ou rdv (selon config + qualification)",
+            "rdv": "→ confirmation (si positif) ou close_echec (si négatif)",
+            "confirmation": "→ close_success (toujours)",
+            "close_success": "→ Fin conversation",
+            "close_echec": "→ Fin conversation"
+        }
         
-        # Fallback par défaut
-        fallback = input(f"\n🔄 Étape de fallback (si intention non reconnue): ").strip()
-        if fallback:
-            step.fallback_step = fallback
-            transitions[fallback] = "fallback"
+        if step_type in flow_rules:
+            print(f"\n📋 Règle automatique: {step_type} {flow_rules[step_type]}")
+
+    def _get_automatic_next_steps(self, step_type: str) -> Dict[str, str]:
+        """Retourne les prochaines étapes automatiques selon le flow intelligent"""
         
-        return transitions
+        # Flow automatique selon les règles définies
+        flow_map = {
+            "intro": {"hello": "automatic"},
+            "hello": {"question1": "automatic", "retry": "automatic"}, 
+            "retry": {"question1": "automatic", "close_echec": "automatic"},
+            "question": {"rdv": "automatic"},  # Simplifié pour l'instant
+            "rdv": {"confirmation": "automatic", "close_echec": "automatic"},
+            "confirmation": {"close_success": "automatic"},
+            "close_success": {},  # Fin
+            "close_echec": {}     # Fin
+        }
+        
+        return flow_map.get(step_type, {})
+
 
     def _configure_advanced_settings(self):
         """Configuration avancée du scénario"""
@@ -736,6 +804,10 @@ Réponds UNIQUEMENT avec les 3 variantes, une par ligne, sans numérotation.
         print("-" * 30)
         
         scenario_name = self.current_scenario["name"].lower().replace(" ", "_")
+        
+        # 0. Analyse finale et polissage intelligent
+        print(f"\n{Colors.BLUE}🧠 ANALYSE FINALE ET POLISSAGE{Colors.NC}")
+        self._perform_final_analysis_and_polish()
         
         # 1. Fichier scénario principal
         self._generate_scenario_file(scenario_name)
@@ -1904,6 +1976,409 @@ if __name__ == "__main__":
         }
         
         return professionalism_map.get(personality, 8)
+
+    def _extract_text_with_vosk(self, audio_file_path: str) -> Optional[str]:
+        """
+        Extrait le texte d'un fichier audio avec Vosk
+        
+        Args:
+            audio_file_path: Chemin vers le fichier audio
+            
+        Returns:
+            Texte extrait ou None si erreur
+        """
+        try:
+            # Import Vosk avec fallback
+            try:
+                import vosk
+                import wave
+                import json
+            except ImportError:
+                print("⚠️ Vosk non installé (pip install vosk)")
+                return None
+            
+            # Vérifier que le fichier existe
+            audio_path = Path(self.scenarios_dir.parent / "audio" / audio_file_path)
+            if not audio_path.exists():
+                print(f"❌ Fichier audio non trouvé: {audio_path}")
+                return None
+            
+            # Charger le modèle Vosk (français)
+            model_path = Path(self.scenarios_dir.parent / "vosk-model-fr")
+            if not model_path.exists():
+                print("⚠️ Modèle Vosk français non trouvé dans vosk-model-fr/")
+                print("💡 Téléchargez: https://alphacephei.com/vosk/models")
+                return None
+            
+            model = vosk.Model(str(model_path))
+            
+            # Ouvrir le fichier audio
+            with wave.open(str(audio_path), 'rb') as wf:
+                # Vérifier format (Vosk préfère 16kHz mono)
+                if wf.getsampwidth() != 2 or wf.getnchannels() != 1:
+                    print("⚠️ Format audio non optimal (préférer 16kHz mono 16-bit)")
+                
+                rec = vosk.KaldiRecognizer(model, wf.getframerate())
+                rec.SetWords(True)
+                
+                results = []
+                
+                # Traitement par chunks
+                while True:
+                    data = wf.readframes(4000)
+                    if len(data) == 0:
+                        break
+                    
+                    if rec.AcceptWaveform(data):
+                        result = json.loads(rec.Result())
+                        if result.get('text'):
+                            results.append(result['text'])
+                
+                # Résultat final
+                final_result = json.loads(rec.FinalResult())
+                if final_result.get('text'):
+                    results.append(final_result['text'])
+                
+                # Combiner tous les résultats
+                extracted_text = ' '.join(results).strip()
+                
+                if extracted_text:
+                    print(f"✅ Vosk extraction réussie: {len(extracted_text)} caractères")
+                    return extracted_text
+                else:
+                    print("❌ Aucun texte détecté par Vosk")
+                    return None
+                    
+        except Exception as e:
+            print(f"❌ Erreur Vosk: {e}")
+            return None
+
+    def _correct_spelling(self, text: str) -> str:
+        """
+        Corrige l'orthographe du texte avec un correcteur français
+        
+        Args:
+            text: Texte à corriger
+            
+        Returns:
+            Texte corrigé
+        """
+        try:
+            # Import correcteur avec fallback
+            try:
+                from spellchecker import SpellChecker
+            except ImportError:
+                print("⚠️ SpellChecker non installé (pip install pyspellchecker)")
+                return text
+            
+            # Correcteur français
+            spell = SpellChecker(language='fr')
+            
+            # Découper en mots
+            words = text.split()
+            corrected_words = []
+            corrections_made = 0
+            
+            for word in words:
+                # Nettoyer le mot (enlever ponctuation pour vérification)
+                clean_word = ''.join(c for c in word if c.isalpha())
+                
+                if clean_word and clean_word.lower() in spell:
+                    # Mot correct
+                    corrected_words.append(word)
+                elif clean_word:
+                    # Mot potentiellement incorrect
+                    suggestions = spell.candidates(clean_word.lower())
+                    if suggestions:
+                        # Prendre la meilleure suggestion
+                        best_suggestion = list(suggestions)[0]
+                        
+                        # Préserver la casse originale
+                        if clean_word.isupper():
+                            best_suggestion = best_suggestion.upper()
+                        elif clean_word.istitle():
+                            best_suggestion = best_suggestion.capitalize()
+                        
+                        # Remplacer dans le mot original (avec ponctuation)
+                        corrected_word = word.replace(clean_word, best_suggestion)
+                        corrected_words.append(corrected_word)
+                        corrections_made += 1
+                        
+                        print(f"📝 Correction: {clean_word} → {best_suggestion}")
+                    else:
+                        # Aucune suggestion, garder original
+                        corrected_words.append(word)
+                else:
+                    # Mot sans lettres (ponctuation, nombres)
+                    corrected_words.append(word)
+            
+            corrected_text = ' '.join(corrected_words)
+            
+            if corrections_made > 0:
+                print(f"✅ {corrections_made} correction(s) appliquée(s)")
+            else:
+                print("✅ Aucune correction nécessaire")
+            
+            return corrected_text
+            
+        except Exception as e:
+            print(f"❌ Erreur correcteur: {e}")
+            return text
+
+    def _pregenerate_tts_audio(self, text: str, audio_filename: str) -> bool:
+        """
+        Pré-génère l'audio TTS avec voice cloning
+        
+        Args:
+            text: Texte à synthétiser
+            audio_filename: Nom du fichier de sortie
+            
+        Returns:
+            True si succès, False sinon
+        """
+        try:
+            # Import du service TTS
+            sys.path.insert(0, str(Path(__file__).parent.parent))
+            from services.tts_voice_clone import voice_clone_service
+            
+            # Dossier audio
+            audio_dir = Path(self.scenarios_dir.parent / "audio")
+            audio_dir.mkdir(exist_ok=True)
+            
+            output_path = audio_dir / audio_filename
+            
+            # Générer l'audio avec voice cloning
+            result = voice_clone_service.generate_speech(
+                text=text,
+                output_path=str(output_path),
+                speed=1.0
+            )
+            
+            if result and Path(result).exists():
+                print(f"✅ Audio TTS pré-généré: {audio_filename}")
+                
+                # Calculer durée approximative
+                duration = len(text) * 0.08  # ~0.08s par caractère (estimation)
+                print(f"📊 Durée estimée: {duration:.1f}s")
+                
+                return True
+            else:
+                print(f"❌ Échec génération TTS pour: {audio_filename}")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Erreur TTS pré-génération: {e}")
+            return False
+
+    def _perform_final_analysis_and_polish(self):
+        """
+        Analyse finale intelligente et polissage automatique du scénario complet
+        Enrichit le contenu automatiquement (sauf pré-enregistrements)
+        """
+        print("🔍 Analyse du contexte global du scénario...")
+        
+        try:
+            # 1. Analyse de cohérence des étapes
+            self._analyze_scenario_coherence()
+            
+            # 2. Enrichissement automatique des contenus
+            self._enrich_scenario_content()
+            
+            # 3. Optimisation du flow conversationnel  
+            self._optimize_conversation_flow()
+            
+            # 4. Validation finale
+            self._validate_final_scenario()
+            
+            print("✅ Analyse finale terminée - Scénario optimisé")
+            
+        except Exception as e:
+            print(f"❌ Erreur analyse finale: {e}")
+
+    def _analyze_scenario_coherence(self):
+        """Analyse la cohérence entre les étapes du scénario"""
+        print("📊 Analyse de cohérence...")
+        
+        # Vérifier la progression logique
+        step_types = []
+        for step_id, step_data in self.current_scenario["steps"].items():
+            step_types.append(step_data.get("step_type", "unknown"))
+        
+        # Vérifications de cohérence
+        coherence_issues = []
+        
+        # Doit commencer par intro
+        if step_types and step_types[0] != "intro":
+            coherence_issues.append("⚠️ Le scénario devrait commencer par une étape 'intro'")
+        
+        # Doit avoir au moins une question
+        if "question" not in step_types:
+            coherence_issues.append("⚠️ Aucune étape 'question' détectée")
+        
+        # Doit avoir une étape de clôture
+        close_steps = [t for t in step_types if t.startswith("close")]
+        if not close_steps:
+            coherence_issues.append("⚠️ Aucune étape de clôture détectée")
+        
+        if coherence_issues:
+            print("⚠️ Problèmes de cohérence détectés:")
+            for issue in coherence_issues:
+                print(f"   {issue}")
+        else:
+            print("✅ Cohérence du scénario validée")
+
+    def _enrich_scenario_content(self):
+        """Enrichit automatiquement le contenu des étapes (sauf pré-enregistrements)"""
+        print("🔧 Enrichissement automatique du contenu...")
+        
+        enriched_count = 0
+        
+        for step_id, step_data in self.current_scenario["steps"].items():
+            # Ne pas enrichir les pré-enregistrements
+            if not step_data.get("tts_enabled", True):
+                print(f"   ⏭️ {step_id}: Pré-enregistrement conservé")
+                continue
+            
+            original_text = step_data.get("text_content", "")
+            if len(original_text) < 50:  # Textes courts à enrichir
+                enriched_text = self._enrich_step_text(original_text, step_data.get("step_type", ""))
+                if enriched_text != original_text:
+                    step_data["text_content"] = enriched_text
+                    print(f"   ✅ {step_id}: Contenu enrichi ({len(original_text)} → {len(enriched_text)} car.)")
+                    enriched_count += 1
+            else:
+                print(f"   ✅ {step_id}: Contenu déjà suffisant ({len(original_text)} car.)")
+        
+        print(f"📈 {enriched_count} étape(s) enrichie(s) automatiquement")
+
+    def _enrich_step_text(self, original_text: str, step_type: str) -> str:
+        """Enrichit le texte d'une étape selon son type"""
+        
+        # Templates d'enrichissement par type
+        enrichment_templates = {
+            "intro": {
+                "prefix": f"Bonjour, {self.current_scenario['agent_name']} de {self.current_scenario['company']}. ",
+                "suffix": " J'espère que vous allez bien ?"
+            },
+            "question": {
+                "prefix": "Permettez-moi de vous poser une question importante. ",
+                "suffix": " Qu'en pensez-vous ?"
+            },
+            "rdv": {
+                "prefix": "Excellente nouvelle ! ",
+                "suffix": " Quand seriez-vous disponible pour un rendez-vous ?"
+            },
+            "confirmation": {
+                "prefix": "Parfait ! Pour résumer, ",
+                "suffix": " Cela vous convient-il ?"
+            },
+            "objection": {
+                "prefix": "Je comprends votre préoccupation. ",
+                "suffix": " Est-ce que cela répond à votre question ?"
+            }
+        }
+        
+        template = enrichment_templates.get(step_type, {"prefix": "", "suffix": ""})
+        
+        # Éviter la duplication si déjà enrichi
+        if original_text.startswith(template["prefix"]) or original_text.endswith(template["suffix"]):
+            return original_text
+        
+        # Appliquer l'enrichissement
+        enriched = template["prefix"] + original_text + template["suffix"]
+        
+        return enriched.strip()
+
+    def _optimize_conversation_flow(self):
+        """Optimise le flow conversationnel avec les règles intelligentes"""
+        print("🎯 Optimisation du flow conversationnel...")
+        
+        # Vérifier que les règles de flow automatique sont cohérentes
+        flow_rules = {
+            "intro": ["hello"],
+            "hello": ["question1", "retry"],
+            "retry": ["question1", "close_echec"],
+            "question1": ["question2", "rdv", "objection", "retry"],
+            "question2": ["rdv", "confirmation", "objection"],
+            "rdv": ["confirmation", "close_success"],
+            "confirmation": ["close_success"],
+            "objection": ["question1", "question2", "rdv"],
+            "close_success": [],
+            "close_echec": []
+        }
+        
+        # Analyser les étapes présentes
+        present_steps = list(self.current_scenario["steps"].keys())
+        present_types = [self.current_scenario["steps"][step_id].get("step_type", "") for step_id in present_steps]
+        
+        optimizations = []
+        
+        # Vérifier les transitions possibles
+        for step_id, step_data in self.current_scenario["steps"].items():
+            step_type = step_data.get("step_type", "")
+            possible_next = flow_rules.get(step_type, [])
+            
+            # Vérifier que les prochaines étapes existent
+            existing_next = [t for t in possible_next if t in present_types]
+            if len(existing_next) < len(possible_next):
+                missing = [t for t in possible_next if t not in present_types]
+                optimizations.append(f"   💡 {step_id} pourrait bénéficier d'étapes: {', '.join(missing)}")
+        
+        if optimizations:
+            print("💡 Optimisations suggérées:")
+            for opt in optimizations:
+                print(opt)
+        else:
+            print("✅ Flow conversationnel optimisé")
+
+    def _validate_final_scenario(self):
+        """Validation finale complète du scénario"""
+        print("🔍 Validation finale...")
+        
+        validation_errors = []
+        validation_warnings = []
+        
+        # Vérifications essentielles
+        if not self.current_scenario.get("name"):
+            validation_errors.append("❌ Nom du scénario manquant")
+        
+        if not self.current_scenario.get("description"):
+            validation_warnings.append("⚠️ Description du scénario recommandée")
+        
+        if not self.current_scenario.get("steps"):
+            validation_errors.append("❌ Aucune étape définie")
+        
+        # Vérifier les variables
+        variables = self.current_scenario.get("variables", {})
+        if not variables:
+            validation_warnings.append("⚠️ Aucune variable définie")
+        
+        # Vérifier la qualification LEADS
+        leads_steps = []
+        for step_id, step_data in self.current_scenario["steps"].items():
+            if step_data.get("is_leads_qualifying", False):
+                leads_steps.append(step_id)
+        
+        if not leads_steps:
+            validation_warnings.append("⚠️ Aucune étape qualifiante LEADS définie")
+        else:
+            print(f"✅ {len(leads_steps)} étape(s) qualifiante(s) LEADS: {', '.join(leads_steps)}")
+        
+        # Afficher les résultats
+        if validation_errors:
+            print("❌ Erreurs de validation:")
+            for error in validation_errors:
+                print(f"   {error}")
+        
+        if validation_warnings:
+            print("⚠️ Avertissements:")
+            for warning in validation_warnings:
+                print(f"   {warning}")
+        
+        if not validation_errors and not validation_warnings:
+            print("✅ Validation complète réussie")
+        elif not validation_errors:
+            print("✅ Validation réussie avec avertissements mineurs")
 
 def main():
     """Point d'entrée principal"""
