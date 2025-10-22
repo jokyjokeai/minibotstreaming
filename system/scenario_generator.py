@@ -760,13 +760,13 @@ Réponds UNIQUEMENT avec les 3 variantes, une par ligne, sans numérotation.
         scenario_dir.mkdir(exist_ok=True)
         
         # Template du scénario complet
-        scenario_template = f'''#!/usr/bin/env python3
+        scenario_template = '''#!/usr/bin/env python3
 """
-Scénario: {self.current_scenario["name"]}
-Description: {self.current_scenario["description"]}
-Entreprise: {self.current_scenario["company"]}
-Agent: {self.current_scenario["agent_name"]}
-Généré le: {datetime.now().strftime("%Y-%m-%d %H:%M:%S")}
+Scénario: {scenario_name_value}
+Description: {scenario_description}
+Entreprise: {scenario_company}
+Agent: {scenario_agent}
+Généré le: {generation_date}
 """
 
 from datetime import datetime
@@ -810,8 +810,8 @@ class {scenario_name.title()}Scenario:
     """
     
     def __init__(self):
-        self.logger = get_logger(f"{{__name__}}.{scenario_name.title()}Scenario")
-        self.scenario_name = "{self.current_scenario["name"]}"
+        self.logger = get_logger(f"{{__name__}}.{scenario_name_title}Scenario")
+        self.scenario_name = "{scenario_name_value}"
         self.variables = SCENARIO_VARIABLES.copy()
         self.streaming_config = STREAMING_CONFIG
         self.advanced_config = ADVANCED_CONFIG
@@ -819,7 +819,7 @@ class {scenario_name.title()}Scenario:
         # Services
         self._init_services()
         
-        self.logger.info(f"✅ Scénario {{self.scenario_name}} initialisé")
+        self.logger.info(f"✅ Scénario {{{{self.scenario_name}}}} initialisé")
     
     def _init_services(self):
         """Initialise les services nécessaires"""
@@ -841,7 +841,7 @@ class {scenario_name.title()}Scenario:
             self.logger.info("🔧 Services streaming initialisés")
             
         except Exception as e:
-            self.logger.error(f"❌ Erreur initialisation services: {{e}}")
+            self.logger.error(f"❌ Erreur initialisation services: {{{{e}}}}")
             raise
     
     @log_function_call(include_args=True, log_performance=True)
@@ -1172,16 +1172,22 @@ class {scenario_name.title()}Scenario:
         if not conversation_flow:
             return False
         
-        # Inclure l'étape actuelle
-        all_steps = conversation_flow + [{"step_config": current_step_config, "intent": "Positif"}]
+        # Inclure l'étape actuelle si elle est qualifiante
+        all_steps = conversation_flow.copy() if conversation_flow else []
+        if current_step_config.get("is_leads_qualifying", False):
+            all_steps.append({
+                "step_id": current_step_config.get("step_id", "current"),
+                "intent": "Positif",
+                "is_leads_qualifying": True
+            })
         
         # Trouver toutes les étapes marquées comme qualifiantes LEADS
         leads_steps = []
         for step in all_steps:
-            step_config = step.get("step_config", {})
-            if step_config.get("is_leads_qualifying", False):
+            # Les step_results contiennent déjà is_leads_qualifying
+            if step.get("is_leads_qualifying", False):
                 leads_steps.append({
-                    "step_type": step_config.get("type", "unknown"),
+                    "step_id": step.get("step_id", "unknown"),
                     "intent": step.get("intent", "unknown"),
                     "is_positive": step.get("intent") == "Positif"
                 })
@@ -1630,23 +1636,34 @@ class {scenario_name.title()}Scenario:
         try:
             # Cette méthode sera appelée avec le phone_number du contexte
             # Pour l'instant, on log juste le statut à appliquer
-            self.logger.info(f"📋 Statut contact à appliquer: {{status}}")
+            self.logger.info(f"📋 Statut contact à appliquer: {status}")
             # TODO: Implémenter mise à jour BDD réelle
         except Exception as e:
-            self.logger.error(f"Erreur mise à jour statut contact: {{e}}")
+            self.logger.error(f"Erreur mise à jour statut contact: {e}")
 
 # Instance du scénario pour utilisation globale
 {scenario_name}_scenario = {scenario_name.title()}Scenario()
 
 def execute_{scenario_name}(robot, channel_id: str, phone_number: str, campaign_id: str = None) -> bool:
-    """
+    \"\"\"
     Fonction d'entrée pour exécuter le scénario {self.current_scenario["name"]}
-    """
+    \"\"\"
     return {scenario_name}_scenario.execute_scenario(robot, channel_id, phone_number, campaign_id)
 '''
         
+        # Formater le template avec les vraies valeurs
+        formatted_template = scenario_template.format(
+            scenario_name_value=self.current_scenario["name"],
+            scenario_description=self.current_scenario["description"],
+            scenario_company=self.current_scenario["company"],
+            scenario_agent=self.current_scenario["agent_name"],
+            generation_date=datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            scenario_name=scenario_name,
+            scenario_name_title=scenario_name.title()
+        )
+        
         scenario_file = scenario_dir / f"{scenario_name}_scenario.py"
-        scenario_file.write_text(scenario_template, encoding='utf-8')
+        scenario_file.write_text(formatted_template, encoding='utf-8')
         
         print(f"✅ Scénario généré: {scenario_file}")
 

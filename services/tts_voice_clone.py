@@ -380,6 +380,32 @@ def generate_dynamic_audio(text: str, context: str = "default") -> Optional[str]
     """
     return voice_clone_service.generate_contextual_response(text, context)
 
+# Méthode manquante pour le freestyle mode
+def synthesize_and_play(self, text: str, channel_id: str):
+    """
+    Synthétise le texte et joue l'audio sur le channel
+    Méthode utilisée par le freestyle mode
+    """
+    try:
+        # Générer l'audio avec voice cloning
+        audio_path = self.generate_speech(text)
+        
+        if audio_path:
+            self.logger.info(f"🎙️ TTS généré pour freestyle: {os.path.basename(audio_path)}")
+            # TODO: Implémenter lecture audio sur channel ARI
+            # robot.play_audio_file(channel_id, audio_path)
+            return audio_path
+        else:
+            self.logger.error("❌ Échec génération TTS pour freestyle")
+            return None
+            
+    except Exception as e:
+        self.logger.error(f"❌ Erreur synthesize_and_play: {e}")
+        return None
+
+# Ajouter la méthode à la classe VoiceCloneService
+VoiceCloneService.synthesize_and_play = synthesize_and_play
+
 if __name__ == "__main__":
     # Test du service
     service = VoiceCloneService()
