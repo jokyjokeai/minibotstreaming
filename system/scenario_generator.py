@@ -334,13 +334,7 @@ class ScenarioGenerator:
             "1": {"code": "contact.first_name", "description": "Prénom du contact"},
             "2": {"code": "contact.last_name", "description": "Nom de famille du contact"},
             "3": {"code": "f'{contact.first_name} {contact.last_name}'", "description": "Nom complet du contact"},
-            "4": {"code": "contact.city", "description": "Ville du contact"},
-            "5": {"code": "contact.phone", "description": "Numéro de téléphone"},
-            "6": {"code": "contact.email", "description": "Email du contact"},
-            "7": {"code": "contact.last_call_date", "description": "Date de dernière interaction"},
-            "8": {"code": "contact.status", "description": "Statut du contact"},
-            "9": {"code": "contact.company", "description": "Entreprise du contact"},
-            "10": {"code": "contact.notes", "description": "Notes sur le contact"}
+            "4": {"code": "contact.city", "description": "Ville du contact"}
         }
         
         variables = {}
@@ -357,9 +351,9 @@ class ScenarioGenerator:
             print(f"\n🔧 SOURCE DE DONNÉES pour ${var_name}:")
             for key, info in db_sources.items():
                 print(f"   {key}. {info['description']}")
-            print(f"   11. Valeur fixe (saisie manuelle)")
+            print(f"   5. Valeur fixe (saisie manuelle)")
             
-            source_choice = input("\nChoisissez la source (1-11): ").strip()
+            source_choice = input("\nChoisissez la source (1-5): ").strip()
             
             if source_choice in db_sources:
                 # Source BDD dynamique
@@ -371,7 +365,7 @@ class ScenarioGenerator:
                 }
                 print(f"✅ ${var_name} sera récupéré dynamiquement: {db_sources[source_choice]['description']}")
                 
-            elif source_choice == "11":
+            elif source_choice == "5":
                 # Valeur fixe
                 var_value = input(f"🔧 Valeur fixe pour ${var_name}: ").strip()
                 variables[var_name] = {
