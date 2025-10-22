@@ -901,7 +901,43 @@ enabled=yes
             if str(dir_path).startswith("/opt") or str(dir_path).startswith("/var"):
                 run_cmd(f"chown asterisk:asterisk {dir_path}", check=False)
         
+        # Pré-accepter la licence Coqui TTS
+        self._setup_tts_license()
+        
         log("✅ Python environment configured")
+    
+    def _setup_tts_license(self):
+        """Pré-accepte automatiquement la licence Coqui TTS"""
+        log("📄 Setting up TTS license acceptance")
+        
+        try:
+            # Méthode 1: Variable d'environnement globale
+            env_content = """
+# TTS Coqui - Auto accept license
+export COQUI_TOS_AGREED=1
+"""
+            with open("/etc/environment", "a") as f:
+                f.write(env_content)
+            
+            # Méthode 2: Répertoire config utilisateur
+            config_dir = Path.home() / ".config" / "tts"
+            config_dir.mkdir(parents=True, exist_ok=True)
+            
+            license_file = config_dir / "agreed_to_license"
+            license_file.write_text("1")
+            
+            # Méthode 3: Config root pour installation système
+            root_config_dir = Path("/root/.config/tts")
+            root_config_dir.mkdir(parents=True, exist_ok=True)
+            
+            root_license_file = root_config_dir / "agreed_to_license"
+            root_license_file.write_text("1")
+            
+            log("✅ TTS license automatically accepted")
+            
+        except Exception as e:
+            log(f"⚠️ Could not setup TTS license: {e}", "warning")
+            log("💡 Manual acceptance will be required during TTS testing")
     
     def _has_gpu(self) -> bool:
         """Vérifie la présence d'un GPU NVIDIA"""
@@ -1641,9 +1677,10 @@ if __name__ == "__main__":
         """Test le système TTS Coqui XTTS v2"""
         log("🎙️ Testing TTS voice cloning system")
         
-        # Test script TTS simple
+        # Test script TTS avec acceptation automatique de licence
         test_script = """
 import sys
+import os
 try:
     from TTS.api import TTS
     import torch
@@ -1652,8 +1689,11 @@ try:
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     print(f"TTS Device: {device}")
     
-    # Test import et initialisation
-    tts = TTS('tts_models/multilingual/multi-dataset/xtts_v2', device=device)
+    # Variables d'environnement pour accepter automatiquement la licence
+    os.environ['COQUI_TOS_AGREED'] = '1'
+    
+    # Test import et initialisation avec licence auto-acceptée
+    tts = TTS('tts_models/multilingual/multi-dataset/xtts_v2', gpu=False)
     print("TTS Model loaded successfully")
     
     # Test génération simple
