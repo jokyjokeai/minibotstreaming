@@ -41,6 +41,16 @@ except ImportError as e:
 except Exception as e:
     logger.error(f"❌ Error loading streaming API: {e}")
 
+# Router téléchargements sécurisés (conditionnel)
+try:
+    from api.downloads import downloads_router
+    app.include_router(downloads_router, prefix="", tags=["downloads"])
+    logger.info("✅ Secure downloads API endpoints registered")
+except ImportError as e:
+    logger.warning(f"⚠️ Downloads API not available: {e}")
+except Exception as e:
+    logger.error(f"❌ Error loading downloads API: {e}")
+
 logger.info("✅ API routers registered: /calls, /campaigns, /stats")
 
 @app.get("/")

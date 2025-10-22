@@ -20,6 +20,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
 AUDIO_SOURCE="$PROJECT_ROOT/audio"
+TTS_GENERATED_SOURCE="$PROJECT_ROOT/tts_generated"
+SCENARIOS_SOURCE="$PROJECT_ROOT/scenarios"
 ASTERISK_SOUNDS="/var/lib/asterisk/sounds/minibot"
 
 # Si force, supprimer les fichiers traités
@@ -113,41 +115,107 @@ echo ""
 echo "📁 Création du répertoire $ASTERISK_SOUNDS..."
 mkdir -p "$ASTERISK_SOUNDS"
 
-# 2. Conversion et copie intelligente
-echo "🔄 Traitement des fichiers audio..."
-for wav in "$AUDIO_SOURCE"/*.wav; do
-    if [ -f "$wav" ]; then
-        filename=$(basename "$wav")
-        target="$ASTERISK_SOUNDS/$filename"
+# 2. Conversion et copie intelligente MULTI-SOURCES
+echo "🔄 Traitement des fichiers audio MULTI-SOURCES..."
+
+# Fonction de traitement unifiée
+process_audio_file() {
+    local source_file="$1"
+    local source_type="$2"
+    
+    if [ -f "$source_file" ]; then
+        local filename=$(basename "$source_file")
+        local target="$ASTERISK_SOUNDS/$filename"
 
         # Vérifier si le fichier source est plus récent
-        if [ ! -f "$target" ] || [ "$wav" -nt "$target" ]; then
-            echo "   📝 Traitement de $filename..."
+        if [ ! -f "$target" ] || [ "$source_file" -nt "$target" ]; then
+            echo "   📝 Traitement de $filename ($source_type)..."
 
-            # Conversion 16kHz pour optimisation streaming
-            # Compatible AudioFork + Vosk + qualité supérieure
+            # Conversion 16kHz pour optimisation streaming + AudioFork + Vosk
             if [ -z "$GAIN_PARAM" ]; then
-                # Pas d'amplification, juste conversion 16kHz
-                sox "$wav" -r 16000 -c 1 "$target" 2>/dev/null
+                # Pas d'amplification, juste conversion 16kHz mono
+                sox "$source_file" -r 16000 -c 1 "$target" 2>/dev/null
             else
-                # Amplification + conversion 16kHz
-                sox "$wav" -r 16000 -c 1 "$target" $GAIN_PARAM 2>/dev/null
+                # Amplification + conversion 16kHz mono
+                sox "$source_file" -r 16000 -c 1 "$target" $GAIN_PARAM 2>/dev/null
             fi
 
             if [ $? -eq 0 ]; then
                 if [ -n "$GAIN_PARAM" ]; then
-                    echo "   ✅ $filename converti (16000 Hz + $GAIN_LABEL)"
+                    echo "   ✅ $filename converti (16000 Hz mono + $GAIN_LABEL) [$source_type]"
                 else
-                    echo "   ✅ $filename converti (16000 Hz)"
+                    echo "   ✅ $filename converti (16000 Hz mono) [$source_type]"
                 fi
             else
-                echo "   ⚠️  Erreur de conversion pour $filename"
+                echo "   ⚠️  Erreur de conversion pour $filename [$source_type]"
             fi
         else
-            echo "   ⏭️  $filename déjà à jour"
+            echo "   ⏭️  $filename déjà à jour [$source_type]"
         fi
     fi
-done
+}
+
+# 2a. Traitement fichiers audio de base (répertoire audio/)
+echo "📁 Source: Fichiers audio de base..."
+if [ -d "$AUDIO_SOURCE" ]; then
+    file_count=0
+    for wav in "$AUDIO_SOURCE"/*.wav; do
+        if [ -f "$wav" ]; then
+            process_audio_file "$wav" "BASE"
+            file_count=$((file_count + 1))
+        fi
+    done
+    echo "   💫 $file_count fichier(s) audio de base traité(s)"
+else
+    echo "   ⚠️  Répertoire audio/ non trouvé: $AUDIO_SOURCE"
+fi
+
+# 2b. Traitement fichiers TTS générés (répertoire tts_generated/)
+echo "📁 Source: Fichiers TTS générés..."
+if [ -d "$TTS_GENERATED_SOURCE" ]; then
+    file_count=0
+    for wav in "$TTS_GENERATED_SOURCE"/*.wav; do
+        if [ -f "$wav" ]; then
+            process_audio_file "$wav" "TTS_GEN"
+            file_count=$((file_count + 1))
+        fi
+    done
+    echo "   🎙️  $file_count fichier(s) TTS générés traité(s)"
+else
+    echo "   ℹ️  Répertoire tts_generated/ non trouvé (sera créé si nécessaire)"
+    mkdir -p "$TTS_GENERATED_SOURCE"
+fi
+
+# 2c. Traitement fichiers TTS de scénarios (scenarios/*/audio/*.wav)
+echo "📁 Source: Fichiers TTS de scénarios..."
+if [ -d "$SCENARIOS_SOURCE" ]; then
+    file_count=0
+    # Rechercher tous les fichiers .wav dans les sous-dossiers de scénarios
+    find "$SCENARIOS_SOURCE" -name "*.wav" -type f | while read scenario_wav; do
+        if [ -f "$scenario_wav" ]; then
+            # Extraire nom du scénario pour préfixer
+            scenario_name=$(echo "$scenario_wav" | sed "s|$SCENARIOS_SOURCE/||" | cut -d'/' -f1)
+            original_filename=$(basename "$scenario_wav")
+            
+            # Créer nom unique avec préfixe scénario
+            prefixed_filename="${scenario_name}_${original_filename}"
+            
+            # Créer fichier temporaire avec le bon nom
+            temp_file="/tmp/$prefixed_filename"
+            cp "$scenario_wav" "$temp_file"
+            
+            process_audio_file "$temp_file" "SCENARIO_$scenario_name"
+            
+            # Nettoyer fichier temporaire
+            rm -f "$temp_file"
+            
+            file_count=$((file_count + 1))
+        fi
+    done
+    echo "   🎭 $file_count fichier(s) TTS de scénarios traité(s)"
+else
+    echo "   ℹ️  Répertoire scenarios/ non trouvé"
+fi
 
 # 3. Permissions
 echo "🔐 Configuration des permissions..."
@@ -160,9 +228,9 @@ echo ""
 echo "📊 Fichiers installés :"
 ls -lh "$ASTERISK_SOUNDS"/*.wav 2>/dev/null | awk '{print "   " $9 " (" $5 ")"}'
 
-# 5. Génération basique audio_texts.json (sans transcription)
+# 5. Génération COMPLÈTE audio_texts.json (toutes sources)
 echo ""
-echo "📝 Génération de audio_texts.json..."
+echo "📝 Génération de audio_texts.json MULTI-SOURCES..."
 python3 << EOF
 import json
 import subprocess
@@ -174,40 +242,111 @@ project_root = "$PROJECT_ROOT"
 
 # Configuration
 audio_dir = os.path.join(project_root, "audio")
+tts_generated_dir = os.path.join(project_root, "tts_generated") 
+scenarios_dir = os.path.join(project_root, "scenarios")
+asterisk_sounds_dir = "/var/lib/asterisk/sounds/minibot"
 output_file = os.path.join(project_root, "audio_texts.json")
 
 audio_texts = {}
 
-for wav_file in sorted(Path(audio_dir).glob("*.wav")):
-    filename = wav_file.stem  # Sans extension (.wav)
-
-    print(f"   📝 Traitement de {filename}.wav...")
-
-    # Durée du fichier avec soxi
+def get_duration(file_path):
+    """Obtient la durée d'un fichier audio avec soxi"""
     try:
         duration_result = subprocess.run(
-            ["soxi", "-D", str(wav_file)],
+            ["soxi", "-D", str(file_path)],
             capture_output=True,
             text=True
         )
-        duration = float(duration_result.stdout.strip()) if duration_result.returncode == 0 else 0.0
+        return float(duration_result.stdout.strip()) if duration_result.returncode == 0 else 0.0
     except:
-        duration = 0.0
+        return 0.0
 
-    audio_texts[filename] = {
-        "file": f"{filename}.wav",
-        "duration": round(duration, 1),
-        "text": f"[Audio {filename} - Transcription via streaming en temps réel]"
-    }
+def process_audio_source(source_dir, source_name, prefix=""):
+    """Traite un répertoire source d'audio"""
+    if not os.path.exists(source_dir):
+        print(f"   ⏭️  {source_name}: répertoire non trouvé ({source_dir})")
+        return 0
+    
+    count = 0
+    print(f"   📁 {source_name}...")
+    
+    for wav_file in sorted(Path(source_dir).glob("*.wav")):
+        filename = wav_file.stem  # Sans extension (.wav)
+        full_filename = f"{prefix}{filename}" if prefix else filename
+        
+        # Vérifier que le fichier existe aussi dans Asterisk
+        asterisk_file = os.path.join(asterisk_sounds_dir, f"{full_filename}.wav")
+        source_for_duration = asterisk_file if os.path.exists(asterisk_file) else wav_file
+        
+        duration = get_duration(source_for_duration)
+        
+        # Définir le texte selon la source
+        if source_name == "Audio de base":
+            text = f"[Audio {full_filename} - Transcription via streaming en temps réel]"
+        elif source_name == "TTS générés":
+            text = f"[TTS généré: {full_filename}]"
+        elif source_name.startswith("Scénario"):
+            text = f"[TTS scénario: {full_filename}]"
+        else:
+            text = f"[Audio: {full_filename}]"
+        
+        audio_texts[full_filename] = {
+            "file": f"{full_filename}.wav",
+            "duration": round(duration, 1),
+            "text": text,
+            "source": source_name
+        }
+        
+        print(f"      ✅ {full_filename}.wav (durée: {duration:.1f}s)")
+        count += 1
+    
+    return count
 
-    print(f"      ✅ Durée: {duration:.1f}s")
+# Traitement par source
+total_files = 0
+
+# 1. Audio de base
+total_files += process_audio_source(audio_dir, "Audio de base")
+
+# 2. TTS générés  
+total_files += process_audio_source(tts_generated_dir, "TTS générés")
+
+# 3. TTS de scénarios (avec préfixe)
+if os.path.exists(scenarios_dir):
+    print(f"   📁 Scénarios TTS...")
+    for scenario_path in Path(scenarios_dir).iterdir():
+        if scenario_path.is_dir():
+            scenario_name = scenario_path.name
+            # Chercher fichiers .wav dans le scénario
+            scenario_audio_files = list(scenario_path.rglob("*.wav"))
+            if scenario_audio_files:
+                for wav_file in scenario_audio_files:
+                    filename = wav_file.stem
+                    prefixed_filename = f"{scenario_name}_{filename}"
+                    
+                    # Vérifier dans Asterisk avec préfixe
+                    asterisk_file = os.path.join(asterisk_sounds_dir, f"{prefixed_filename}.wav")
+                    source_for_duration = asterisk_file if os.path.exists(asterisk_file) else wav_file
+                    
+                    duration = get_duration(source_for_duration)
+                    
+                    audio_texts[prefixed_filename] = {
+                        "file": f"{prefixed_filename}.wav", 
+                        "duration": round(duration, 1),
+                        "text": f"[TTS scénario {scenario_name}: {filename}]",
+                        "source": f"Scénario {scenario_name}"
+                    }
+                    
+                    print(f"      ✅ {prefixed_filename}.wav (durée: {duration:.1f}s)")
+                    total_files += 1
 
 # Sauvegarder dans audio_texts.json
 with open(output_file, 'w', encoding='utf-8') as f:
     json.dump(audio_texts, f, indent=2, ensure_ascii=False)
 
-print(f"\n   ✅ audio_texts.json créé avec {len(audio_texts)} fichiers")
-print("   💡 Transcriptions seront générées en temps réel via Vosk durant les appels")
+print(f"\n   ✅ audio_texts.json créé avec {total_files} fichiers de toutes sources")
+print("   💡 Structure complète : audio/ + tts_generated/ + scenarios/")
+print("   🎙️  Transcriptions temps réel via Vosk + transcription complète post-appel")
 
 EOF
 
@@ -227,18 +366,31 @@ chown -R "$REAL_USER:$REAL_USER" "$PROJECT_ROOT/logs/" 2>/dev/null || true
 echo "   ✅ Permissions corrigées pour $REAL_USER"
 
 echo ""
-echo "✅ Configuration terminée !"
+echo "✅ Configuration MULTI-SOURCES terminée !"
 echo ""
 echo "ℹ️  Notes importantes :"
-echo "   • Les fichiers sont dans : $ASTERISK_SOUNDS"
-echo "   • Format optimisé : 16kHz mono WAV (streaming)"
+echo "   • Fichiers installés dans : $ASTERISK_SOUNDS"
+echo "   • Format optimisé : 16kHz mono WAV (AudioFork + Vosk + MixMonitor)"
 echo "   • Utilisables avec : sound:minibot/[nom_fichier]"
 echo "   • Réglage volume appliqué : $GAIN_LABEL"
-echo "   • audio_texts.json généré (transcriptions temps réel via Vosk)"
+echo "   • audio_texts.json généré MULTI-SOURCES complet"
+echo ""
+echo "📁 Sources audio traitées :"
+echo "   • $AUDIO_SOURCE (audio de base)"
+echo "   • $TTS_GENERATED_SOURCE (TTS générés)"
+echo "   • $SCENARIOS_SOURCE (TTS scénarios avec préfixe)"
 echo ""
 echo "🔄 Pour modifier le volume :"
 echo "   • Méthode rapide : sudo ./setup_audio.sh -f"
 echo "   • Ou manuellement : rm -rf $ASTERISK_SOUNDS/*.wav puis relancer"
 echo ""
-echo "💡 Ce script est INTELLIGENT : il ne recopie que les fichiers modifiés"
+echo "💡 Ce script est INTELLIGENT :"
+echo "   • Recopie seulement les fichiers modifiés"
+echo "   • Traite automatiquement TOUTES les sources audio"
+echo "   • Compatible streaming temps réel + enregistrement complet"
+echo ""
+echo "🎯 Prochaines étapes recommandées :"
+echo "   1. Vérifier : ls -la $ASTERISK_SOUNDS"
+echo "   2. Tester streaming : ./start_system.sh"
+echo "   3. Contrôler audio_texts.json pour exports"
 echo ""
