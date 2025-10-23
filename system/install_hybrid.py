@@ -769,9 +769,52 @@ PUBLIC_API_URL=http://localhost:8000
         
         # Autres configs : Merge possible
         self._copy_config("ari_streaming.conf", "/etc/asterisk/ari.conf")
+
+        # Fix ARI password variable (remplacer ${ARI_PASSWORD} par valeur réelle)
+        log("🔧 Fixing ARI password variable in /etc/asterisk/ari.conf")
+        with open("/etc/asterisk/ari.conf", "r") as f:
+            ari_content = f.read()
+        ari_content = ari_content.replace("${ARI_PASSWORD}", "MiniBotAI2025!")
+        with open("/etc/asterisk/ari.conf", "w") as f:
+            f.write(ari_content)
+        log("✅ ARI password configured")
+
         self._copy_config("extensions_streaming.conf", "/etc/asterisk/extensions.conf")
+
+        # Fix variables dans extensions.conf
+        log("🔧 Fixing variables in /etc/asterisk/extensions.conf")
+        with open("/etc/asterisk/extensions.conf", "r") as f:
+            ext_content = f.read()
+        ext_content = ext_content.replace("${STREAMING_MODE}", "true")
+        ext_content = ext_content.replace("${AUDIOFORK_HOST}", "127.0.0.1")
+        ext_content = ext_content.replace("${AUDIOFORK_PORT}", "8765")
+        ext_content = ext_content.replace("${AMD_INITIAL_SILENCE}", "2000")
+        ext_content = ext_content.replace("${AMD_GREETING}", "5000")
+        ext_content = ext_content.replace("${AMD_AFTER_GREETING_SILENCE}", "800")
+        ext_content = ext_content.replace("${AMD_TOTAL_ANALYSIS_TIME}", "7000")
+        ext_content = ext_content.replace("${AMD_MIN_WORD_LENGTH}", "100")
+        ext_content = ext_content.replace("${AMD_BETWEEN_WORDS_SILENCE}", "50")
+        ext_content = ext_content.replace("${AMD_ENABLED}", "true")
+        with open("/etc/asterisk/extensions.conf", "w") as f:
+            f.write(ext_content)
+        log("✅ Extensions.conf variables configured")
+
         self._copy_config("amd_streaming.conf", "/etc/asterisk/amd.conf")
-        
+
+        # Fix variables dans amd.conf
+        log("🔧 Fixing variables in /etc/asterisk/amd.conf")
+        with open("/etc/asterisk/amd.conf", "r") as f:
+            amd_content = f.read()
+        amd_content = amd_content.replace("${AMD_INITIAL_SILENCE}", "2000")
+        amd_content = amd_content.replace("${AMD_GREETING}", "5000")
+        amd_content = amd_content.replace("${AMD_AFTER_GREETING_SILENCE}", "800")
+        amd_content = amd_content.replace("${AMD_TOTAL_ANALYSIS_TIME}", "7000")
+        amd_content = amd_content.replace("${AMD_MIN_WORD_LENGTH}", "100")
+        amd_content = amd_content.replace("${AMD_BETWEEN_WORDS_SILENCE}", "50")
+        with open("/etc/asterisk/amd.conf", "w") as f:
+            f.write(amd_content)
+        log("✅ AMD.conf variables configured")
+
         # Configuration HTTP (commune)
         http_conf = """[general]
 enabled=yes
