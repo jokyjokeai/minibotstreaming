@@ -632,7 +632,7 @@ class DatabaseInstaller:
         ]
         
         for cmd in commands:
-            run_cmd(f'sudo -u postgres psql -c "{cmd}"', check=False)
+            run_cmd(f'runuser -u postgres -- psql -c "{cmd}"', check=False)
         
         log(f"✅ Database {self.db_name} created with user {self.db_user}")
 
@@ -966,7 +966,19 @@ enabled=yes
         log("🐍 Setting up Python environment")
 
         # Détecter l'utilisateur réel (même si lancé en sudo)
-        real_user = os.getenv("SUDO_USER", os.getenv("USER", "root"))
+        real_user = os.getenv("SUDO_USER")
+
+        if not real_user or real_user == "root":
+            # Fallback: détecter via le propriétaire du projet
+            try:
+                import pwd
+                project_stat = os.stat(self.project_root)
+                real_user = pwd.getpwuid(project_stat.st_uid).pw_name
+                log(f"   👤 Utilisateur détecté via projet: {real_user}")
+            except Exception:
+                real_user = os.getenv("USER", "root")
+
+        log(f"   👤 Utilisateur pour permissions projet: {real_user}")
 
         # Créer répertoires nécessaires
         dirs_to_create = [
@@ -985,10 +997,12 @@ enabled=yes
             if str(dir_path).startswith("/opt") or str(dir_path).startswith("/var"):
                 # Dossiers système → asterisk:asterisk (CRITIQUE pour Asterisk)
                 run_cmd(f"chown -R asterisk:asterisk {dir_path}", check=False)
-            elif str(dir_path).startswith(str(self.project_root)):
-                # Dossiers projet → utilisateur réel
+            elif str(dir_path).startswith(str(self.project_root)) and real_user != "root":
+                # Dossiers projet → utilisateur réel (sauf si root)
                 run_cmd(f"chown -R {real_user}:{real_user} {dir_path}", check=False)
                 log(f"   📁 {dir_path} → {real_user}:{real_user}")
+            elif str(dir_path).startswith(str(self.project_root)) and real_user == "root":
+                log(f"   ⚠️  {dir_path} reste en root (aucun utilisateur non-root détecté)", "warning")
 
         # Pré-accepter la licence Coqui TTS
         self._setup_tts_license()
@@ -1433,7 +1447,7 @@ transmit_silence = yes		; Transmet du silence RTP pendant l'enregistrement
                     log("❌ All systemctl attempts failed, trying direct start", "warning")
                     
                     # Fallback: démarrage direct
-                    run_cmd("cd /var/lib/asterisk && sudo -u asterisk /usr/sbin/asterisk -C /etc/asterisk/asterisk.conf", 
+                    run_cmd("cd /var/lib/asterisk && runuser -u asterisk -- /usr/sbin/asterisk -C /etc/asterisk/asterisk.conf",
                            "Direct Asterisk start", timeout=30, check=False)
                     time.sleep(5)
             
