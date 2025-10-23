@@ -11,7 +11,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
 # Créer les dossiers nécessaires
-mkdir -p logs recordings audio assembled_audio transcripts
+mkdir -p logs audio transcripts
 
 # Nettoyage automatique des anciens enregistrements
 echo "🧹 Nettoyage des anciens enregistrements (>7 jours)..."

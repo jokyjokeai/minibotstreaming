@@ -921,27 +921,35 @@ enabled=yes
     def setup_python_configs(self):
         """Configure l'environnement Python"""
         log("🐍 Setting up Python environment")
-        
+
+        # Détecter l'utilisateur réel (même si lancé en sudo)
+        real_user = os.getenv("SUDO_USER", os.getenv("USER", "root"))
+
         # Créer répertoires nécessaires
         dirs_to_create = [
             "/opt/minibot",
             "/opt/minibot/models",
-            "/opt/minibot/logs", 
+            "/opt/minibot/logs",
             "/var/lib/asterisk/sounds/minibot",
             self.project_root / "logs",
-            self.project_root / "recordings",
-            self.project_root / "assembled_audio",
             self.project_root / "transcripts"
         ]
-        
+
         for dir_path in dirs_to_create:
             Path(dir_path).mkdir(parents=True, exist_ok=True)
+
+            # Permissions selon type de dossier
             if str(dir_path).startswith("/opt") or str(dir_path).startswith("/var"):
-                run_cmd(f"chown asterisk:asterisk {dir_path}", check=False)
-        
+                # Dossiers système → asterisk:asterisk (CRITIQUE pour Asterisk)
+                run_cmd(f"chown -R asterisk:asterisk {dir_path}", check=False)
+            elif str(dir_path).startswith(str(self.project_root)):
+                # Dossiers projet → utilisateur réel
+                run_cmd(f"chown -R {real_user}:{real_user} {dir_path}", check=False)
+                log(f"   📁 {dir_path} → {real_user}:{real_user}")
+
         # Pré-accepter la licence Coqui TTS
         self._setup_tts_license()
-        
+
         log("✅ Python environment configured")
     
     def _setup_tts_license(self):
