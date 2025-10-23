@@ -22,6 +22,7 @@ parent_dir = current_dir.parent
 sys.path.insert(0, str(parent_dir))
 
 from logger_config import get_logger
+from config import RECORDINGS_PATH
 
 logger = get_logger(__name__)
 
@@ -29,12 +30,12 @@ class PostCallRecordingService:
     """
     Service de traitement post-appel pour enregistrements complets
     """
-    
+
     def __init__(self):
         self.logger = get_logger(f"{__name__}.PostCallRecordingService")
-        
+
         # Chemins
-        self.recordings_path = "/var/spool/asterisk/recording"
+        self.recordings_path = RECORDINGS_PATH
         project_root = Path(__file__).parent.parent
         self.transcripts_path = project_root / "transcripts"
         self.audio_texts_path = project_root / "audio_texts.json"

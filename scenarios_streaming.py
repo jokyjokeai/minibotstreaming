@@ -20,11 +20,6 @@ logger = get_logger(__name__)
 # Import des services (avec fallback)
 import config
 
-# Services assemblage et transcription (supprimés - remplacés par post_call_recording_service)
-# Ancien système audio_assembly_service supprimé car obsolète
-# Maintenant on utilise MixMonitor + post_call_recording_service pour enregistrement complet
-ASSEMBLY_AVAILABLE = False
-
 # Services streaming (requis)
 logger.info("🤖 Loading streaming services for scenarios...")
 try:
@@ -386,12 +381,9 @@ class ScenarioManager:
                 contact.status = status
                 contact.last_attempt = datetime.now()
                 contact.attempts += 1
-                
-                # Sauvegarder conversation si disponible
-                if conversation_flow and ASSEMBLY_AVAILABLE:
-                    # TODO: Sauvegarder le flow de conversation
-                    pass
-                
+
+                # Note: Conversation flow sauvegardé via MixMonitor (post_call_recording_service)
+
                 db.commit()
                 self.logger.info(f"📊 Contact {phone_number} → {status}")
             
@@ -441,5 +433,5 @@ if __name__ == "__main__":
     manager = ScenarioManager()
     
     print(f"\n📋 Streaming config available: {bool(STREAMING_CONFIG)}")
-    print(f"📋 Services available: streaming={STREAMING_SERVICES_AVAILABLE}, assembly={ASSEMBLY_AVAILABLE}")
-    print(f"📋 Mode: streaming only")
+    print(f"📋 Services available: streaming={STREAMING_SERVICES_AVAILABLE}")
+    print(f"📋 Mode: streaming only (recordings via MixMonitor)")

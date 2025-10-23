@@ -23,8 +23,7 @@ logger = get_logger(__name__)
 
 # Configuration
 import config
-from config import ARI_URL, ARI_USERNAME as ARI_USER, ARI_PASSWORD as ARI_PASS
-RECORDINGS_PATH = "/var/spool/asterisk/recording"
+from config import ARI_URL, ARI_USERNAME as ARI_USER, ARI_PASSWORD as ARI_PASS, RECORDINGS_PATH
 
 
 # Services streaming (requis)
@@ -52,7 +51,7 @@ except Exception as e:
 # Cache scénarios si disponible
 try:
     from scenario_cache import scenario_manager
-    scenario_manager.preload_scenarios()
+    scenario_manager.preload_single_scenario()
     logger.info("✅ Scenarios cached and validated")
 except Exception as e:
     logger.warning(f"⚠️ Scenario cache not available: {e}")
@@ -537,15 +536,15 @@ class RobotARIStreaming:
             return None
 
     def _post_process_call(self, channel_id: str):
-        """Post-traitement après appel (assembly audio, etc.)"""
+        """Post-traitement après appel (géré par post_call_recording_service)"""
         try:
             if channel_id in self.call_sequences:
                 sequence = self.call_sequences[channel_id]
                 logger.debug(f"🔧 Post-processing call {channel_id} with {len(sequence)} audio items")
-                
-                # Déclencher assembly audio (logique existante)
-                # TODO: Appeler audio_assembly_service
-                
+
+                # Note: Assembly audio et transcription complets gérés par post_call_recording_service
+                # via MixMonitor recordings
+
         except Exception as e:
             logger.error(f"❌ Error in post-processing: {e}")
 

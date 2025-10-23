@@ -24,6 +24,7 @@ parent_dir = current_dir.parent
 sys.path.insert(0, str(parent_dir))
 
 from logger_config import get_logger
+from config import RECORDINGS_PATH
 
 logger = get_logger(__name__)
 
@@ -31,7 +32,6 @@ logger = get_logger(__name__)
 downloads_router = APIRouter(prefix="/api/downloads", tags=["downloads"])
 
 # Configuration
-RECORDINGS_PATH = "/var/spool/asterisk/recording"
 TRANSCRIPTS_PATH = Path(__file__).parent.parent / "transcripts"
 TOKENS_FILE = TRANSCRIPTS_PATH / "download_tokens.json"
 

@@ -21,13 +21,8 @@ PUBLIC_API_URL = os.getenv("PUBLIC_API_URL", "http://localhost:8000")
 # Streaming toujours activé - mode classic supprimé
 STREAMING_MODE = True
 
-# Whisper gardé uniquement pour fallback d'urgence (si Vosk échoue)
-WHISPER_MODEL = os.getenv("WHISPER_MODEL", "small")  
-WHISPER_DEVICE = os.getenv("WHISPER_DEVICE", "cpu")  
-WHISPER_COMPUTE_TYPE = os.getenv("WHISPER_COMPUTE_TYPE", "int8")  
-
 # =============================================================================
-# TRANSCRIPTION - MODE STREAMING (Vosk)
+# TRANSCRIPTION - MODE STREAMING UNIQUEMENT (Vosk)
 # =============================================================================
 VOSK_MODEL_PATH = os.getenv("VOSK_MODEL_PATH", "models/vosk-fr")
 VOSK_SAMPLE_RATE = int(os.getenv("VOSK_SAMPLE_RATE", "16000"))
@@ -36,7 +31,7 @@ VOSK_SAMPLE_RATE = int(os.getenv("VOSK_SAMPLE_RATE", "16000"))
 # NLP & INTENT (Ollama Local)
 # =============================================================================
 OLLAMA_URL = os.getenv("OLLAMA_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "phi3")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "llama3.2:1b")
 OLLAMA_TIMEOUT = int(os.getenv("OLLAMA_TIMEOUT", "10"))  # secondes
 
 # Fallback sur sentiment analysis keywords si Ollama indisponible (fallback d'urgence uniquement)

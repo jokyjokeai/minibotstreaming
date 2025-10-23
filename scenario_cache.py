@@ -58,9 +58,9 @@ class ScenarioManager:
 
     def _detect_active_scenario(self):
         """Détecte automatiquement LE scénario à utiliser (priorité logique)"""
-        
+
         # PRIORITÉ 1: Scénario généré le plus récent (scenarios/*/scenario.py)
-        scenarios_dir = Path("scenarios")
+        scenarios_dir = Path(__file__).parent / "scenarios"
         if scenarios_dir.exists():
             generated_scenarios = []
             for scenario_path in scenarios_dir.iterdir():
@@ -196,4 +196,4 @@ scenario_manager = ScenarioManager()
 
 if __name__ == "__main__":
     # Test standalone
-    scenario_manager.preload_scenarios()
+    scenario_manager.preload_single_scenario()

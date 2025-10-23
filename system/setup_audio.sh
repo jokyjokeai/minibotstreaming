@@ -228,127 +228,10 @@ echo ""
 echo "📊 Fichiers installés :"
 ls -lh "$ASTERISK_SOUNDS"/*.wav 2>/dev/null | awk '{print "   " $9 " (" $5 ")"}'
 
-# 5. Génération COMPLÈTE audio_texts.json (toutes sources)
+# 5. Info sur audio_texts.json
 echo ""
-echo "📝 Génération de audio_texts.json MULTI-SOURCES..."
-python3 << EOF
-import json
-import subprocess
-import os
-from pathlib import Path
-
-# Récupérer PROJECT_ROOT depuis la variable d'environnement passée par bash
-project_root = "$PROJECT_ROOT"
-
-# Configuration
-audio_dir = os.path.join(project_root, "audio")
-tts_generated_dir = os.path.join(project_root, "tts_generated") 
-scenarios_dir = os.path.join(project_root, "scenarios")
-asterisk_sounds_dir = "/var/lib/asterisk/sounds/minibot"
-output_file = os.path.join(project_root, "audio_texts.json")
-
-audio_texts = {}
-
-def get_duration(file_path):
-    """Obtient la durée d'un fichier audio avec soxi"""
-    try:
-        duration_result = subprocess.run(
-            ["soxi", "-D", str(file_path)],
-            capture_output=True,
-            text=True
-        )
-        return float(duration_result.stdout.strip()) if duration_result.returncode == 0 else 0.0
-    except:
-        return 0.0
-
-def process_audio_source(source_dir, source_name, prefix=""):
-    """Traite un répertoire source d'audio"""
-    if not os.path.exists(source_dir):
-        print(f"   ⏭️  {source_name}: répertoire non trouvé ({source_dir})")
-        return 0
-    
-    count = 0
-    print(f"   📁 {source_name}...")
-    
-    for wav_file in sorted(Path(source_dir).glob("*.wav")):
-        filename = wav_file.stem  # Sans extension (.wav)
-        full_filename = f"{prefix}{filename}" if prefix else filename
-        
-        # Vérifier que le fichier existe aussi dans Asterisk
-        asterisk_file = os.path.join(asterisk_sounds_dir, f"{full_filename}.wav")
-        source_for_duration = asterisk_file if os.path.exists(asterisk_file) else wav_file
-        
-        duration = get_duration(source_for_duration)
-        
-        # Définir le texte selon la source
-        if source_name == "Audio de base":
-            text = f"[Audio {full_filename} - Transcription via streaming en temps réel]"
-        elif source_name == "TTS générés":
-            text = f"[TTS généré: {full_filename}]"
-        elif source_name.startswith("Scénario"):
-            text = f"[TTS scénario: {full_filename}]"
-        else:
-            text = f"[Audio: {full_filename}]"
-        
-        audio_texts[full_filename] = {
-            "file": f"{full_filename}.wav",
-            "duration": round(duration, 1),
-            "text": text,
-            "source": source_name
-        }
-        
-        print(f"      ✅ {full_filename}.wav (durée: {duration:.1f}s)")
-        count += 1
-    
-    return count
-
-# Traitement par source
-total_files = 0
-
-# 1. Audio de base
-total_files += process_audio_source(audio_dir, "Audio de base")
-
-# 2. TTS générés  
-total_files += process_audio_source(tts_generated_dir, "TTS générés")
-
-# 3. TTS de scénarios (avec préfixe)
-if os.path.exists(scenarios_dir):
-    print(f"   📁 Scénarios TTS...")
-    for scenario_path in Path(scenarios_dir).iterdir():
-        if scenario_path.is_dir():
-            scenario_name = scenario_path.name
-            # Chercher fichiers .wav dans le scénario
-            scenario_audio_files = list(scenario_path.rglob("*.wav"))
-            if scenario_audio_files:
-                for wav_file in scenario_audio_files:
-                    filename = wav_file.stem
-                    prefixed_filename = f"{scenario_name}_{filename}"
-                    
-                    # Vérifier dans Asterisk avec préfixe
-                    asterisk_file = os.path.join(asterisk_sounds_dir, f"{prefixed_filename}.wav")
-                    source_for_duration = asterisk_file if os.path.exists(asterisk_file) else wav_file
-                    
-                    duration = get_duration(source_for_duration)
-                    
-                    audio_texts[prefixed_filename] = {
-                        "file": f"{prefixed_filename}.wav", 
-                        "duration": round(duration, 1),
-                        "text": f"[TTS scénario {scenario_name}: {filename}]",
-                        "source": f"Scénario {scenario_name}"
-                    }
-                    
-                    print(f"      ✅ {prefixed_filename}.wav (durée: {duration:.1f}s)")
-                    total_files += 1
-
-# Sauvegarder dans audio_texts.json
-with open(output_file, 'w', encoding='utf-8') as f:
-    json.dump(audio_texts, f, indent=2, ensure_ascii=False)
-
-print(f"\n   ✅ audio_texts.json créé avec {total_files} fichiers de toutes sources")
-print("   💡 Structure complète : audio/ + tts_generated/ + scenarios/")
-print("   🎙️  Transcriptions temps réel via Vosk + transcription complète post-appel")
-
-EOF
+echo "💡 Note: audio_texts.json est généré par scenario_generator.py"
+echo "   (utilisé pour le clonage vocal à partir des fichiers audio/)"
 
 # 6. Correction des permissions (évite les problèmes si lancé en sudo)
 echo ""
@@ -373,7 +256,6 @@ echo "   • Fichiers installés dans : $ASTERISK_SOUNDS"
 echo "   • Format optimisé : 16kHz mono WAV (AudioFork + Vosk + MixMonitor)"
 echo "   • Utilisables avec : sound:minibot/[nom_fichier]"
 echo "   • Réglage volume appliqué : $GAIN_LABEL"
-echo "   • audio_texts.json généré MULTI-SOURCES complet"
 echo ""
 echo "📁 Sources audio traitées :"
 echo "   • $AUDIO_SOURCE (audio de base)"
@@ -391,6 +273,6 @@ echo "   • Compatible streaming temps réel + enregistrement complet"
 echo ""
 echo "🎯 Prochaines étapes recommandées :"
 echo "   1. Vérifier : ls -la $ASTERISK_SOUNDS"
-echo "   2. Tester streaming : ./start_system.sh"
-echo "   3. Contrôler audio_texts.json pour exports"
+echo "   2. Créer scénario : python3 system/scenario_generator.py (génère audio_texts.json + TTS)"
+echo "   3. Tester streaming : ./start_system.sh"
 echo ""

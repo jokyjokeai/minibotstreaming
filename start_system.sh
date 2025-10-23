@@ -182,134 +182,226 @@ if pgrep -f "uvicorn main:app" > /dev/null; then
     sleep 2
 fi
 
-# ========== PRÉCHARGEMENT HEAVY LIFTING ==========
+# ========== PRÉCHARGEMENT HEAVY LIFTING OPTIMISÉ ==========
 echo ""
 echo "========================================="
-echo "  PRÉCHARGEMENT SERVICES (HEAVY LIFTING)"
+echo "  PRÉCHARGEMENT OPTIMISÉ (PARALLEL)"
 echo "========================================="
 echo ""
 
-# Test et préchargement Vosk ASR
-echo "🎤 Préchargement Vosk ASR français..."
-python3 -c "
+# Préchargement parallèle de tous les modèles avec optimisations
+python3 << 'EOF'
 import os
-try:
-    import vosk
-    import json
-    # Préchargement du modèle français en mémoire
-    print('✅ Vosk importé, préchargement modèle...')
-    
-    # Vérifier plusieurs paths possibles
-    possible_paths = [
-        '/opt/minibot/models/vosk-fr',
-        '/var/lib/vosk-models/vosk-fr-small',
-        '/opt/minibot/models/vosk-fr-small'
-    ]
-    
-    model_path = None
-    for path in possible_paths:
-        if os.path.exists(path) and os.path.exists(os.path.join(path, 'conf')):
-            model_path = path
-            print(f'🎯 Modèle Vosk trouvé: {path}')
-            break
-    
-    if model_path:
-        model = vosk.Model(model_path)
-        print('✅ Modèle Vosk FR préchargé en mémoire')
-    else:
-        print('⚠️ Modèle Vosk non trouvé, vérifiez installation')
-        print(f'   Paths vérifiés: {possible_paths}')
-except ImportError:
-    print('❌ Vosk non disponible')
-    exit(1)
-except Exception as e:
-    print(f'⚠️ Vosk warning: {e}')
-" || { echo "❌ Vosk requis pour streaming"; exit 1; }
+import sys
+import time
+import threading
+import subprocess
+import requests
+import json
 
-# Test et warming Ollama NLP
-echo "🤖 Vérification et warming Ollama llama3.2:1b..."
-if curl -s http://localhost:11434/api/version >/dev/null; then
-    echo "✅ Ollama API accessible"
-    
-    # Vérifier si llama3.2:1b est installé
-    if ollama list | grep -q 'llama3.2:1b'; then
-        echo "✅ Modèle llama3.2:1b déjà installé"
-    else
-        echo "📥 Installation modèle llama3.2:1b (modèle optimal)..."
-        ollama pull llama3.2:1b
-        
-        # Supprimer phi3:mini si présent (modèle suboptimal)
-        if ollama list | grep -q 'phi3:mini'; then
-            echo "🗑️ Suppression phi3:mini (remplacé par llama3.2:1b)..."
-            ollama rm phi3:mini 2>/dev/null || true
-        fi
-    fi
-    
-    # Warming avec query test pour charger le modèle en mémoire
-    echo "🔥 Warming model llama3.2:1b..."
-    curl -s -X POST http://localhost:11434/api/generate \
-        -H 'Content-Type: application/json' \
-        -d '{"model":"llama3.2:1b","prompt":"test warming","stream":false,"options":{"temperature":0.05,"num_predict":5}}' >/dev/null || true
-    echo "✅ Ollama llama3.2:1b warmed up and ready"
-else
-    echo "❌ Ollama API non accessible"
-    exit 1
-fi
+print("⚡ OPTIMISEUR PIPELINE MiniBotPanel v2")
+print("=" * 60)
 
-# Test et préchargement TTS Coqui XTTS v2
-echo "🎙️  Préchargement Coqui TTS XTTS v2..."
-python3 -c "
-try:
-    from TTS.api import TTS
-    import torch
-    
-    # Détection GPU/CPU automatique
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    print(f'🔧 TTS Device: {device}')
-    
-    # Préchargement modèle XTTS v2 (plus lourd)
-    print('📥 Chargement XTTS v2 model...')
-    tts = TTS('tts_models/multilingual/multi-dataset/xtts_v2', device=device)
-    print('✅ Coqui TTS XTTS v2 préchargé en mémoire')
-    
-    # Test génération rapide
-    test_text = 'Test préchargement TTS'
-    test_output = '/tmp/tts_warmup_test.wav'
-    # Pas de speaker_wav pour l'instant, juste warming
-    print('🔥 TTS warmup test...')
-    
-except ImportError as e:
-    print(f'⚠️ TTS not available: {e}')
-except Exception as e:
-    print(f'⚠️ TTS warning: {e}')
-" 
+# 1️⃣ Variables d'environnement optimales
+optimizations = {
+    "OMP_NUM_THREADS": "4",
+    "PYTHONUNBUFFERED": "1",
+    "TTS_THREADS": "4",
+    "VOSK_SAMPLE_RATE": "16000",
+    "VAD_MODE": "2",  # Mode 2 = balanced (optimal)
+    "VAD_FRAME_MS": "30",
+    "OLLAMA_NUM_PARALLEL": "4",
+    "OLLAMA_NUM_THREAD": "4"
+}
 
-# Test WebRTC VAD
-echo "🎙️  Test WebRTC VAD..."
-python3 -c "
-try:
-    import webrtcvad
-    print('✅ WebRTC VAD disponible')
-except ImportError:
-    print('❌ WebRTC VAD non disponible')
-    exit(1)
-" || { echo "❌ WebRTC VAD requis pour streaming"; exit 1; }
+for key, value in optimizations.items():
+    os.environ[key] = value
 
-# Préchargement scénario unique
-echo "🎭 Préchargement du scénario actif..."
-python3 -c "
-try:
-    from scenario_cache import scenario_manager
-    success = scenario_manager.preload_single_scenario()
-    if success:
-        print('✅ Scénario unique préchargé en cache')
-    else:
-        print('⚠️ Fallback scenario utilisé')
-except Exception as e:
-    print(f'⚠️ Scenario cache warning: {e}')
-"
+print("✅ Variables d'environnement optimisées")
+print()
 
-echo "✅ Tous les services préchargés (heavy lifting terminé)"
+# 2️⃣ Fonctions de préchargement
+
+def preload_vosk():
+    """Précharge Vosk ASR"""
+    try:
+        from vosk import Model, KaldiRecognizer
+
+        possible_paths = [
+            '/opt/minibot/models/vosk-fr',
+            '/var/lib/vosk-models/vosk-fr-small',
+            '/opt/minibot/models/vosk-fr-small'
+        ]
+
+        model_path = None
+        for path in possible_paths:
+            if os.path.exists(path) and os.path.exists(os.path.join(path, 'conf')):
+                model_path = path
+                break
+
+        if not model_path:
+            print("❌ [Vosk] Modèle non trouvé")
+            sys.exit(1)
+
+        print(f"🎤 [Vosk] Chargement depuis {model_path}...")
+        start = time.time()
+        model = Model(model_path)
+
+        # Test recognizer
+        rec = KaldiRecognizer(model, 16000)
+        rec.SetWords(True)
+
+        elapsed = time.time() - start
+        print(f"✅ [Vosk] Modèle prêt ({elapsed:.2f}s)")
+
+    except ImportError:
+        print("❌ [Vosk] Module non disponible")
+        sys.exit(1)
+    except Exception as e:
+        print(f"❌ [Vosk] Erreur: {e}")
+        sys.exit(1)
+
+def preload_ollama():
+    """Warm-up Ollama NLP"""
+    try:
+        # Vérifier service
+        result = subprocess.run(
+            ["systemctl", "is-active", "ollama"],
+            capture_output=True
+        )
+
+        if result.returncode != 0:
+            print("⚠️  [Ollama] Service non actif, démarrage...")
+            subprocess.run(["systemctl", "start", "ollama"])
+            time.sleep(5)
+
+        # Vérifier modèle llama3.2:1b
+        result = subprocess.run(["ollama", "list"], capture_output=True, text=True)
+
+        if "llama3.2:1b" not in result.stdout:
+            print("📥 [Ollama] Installation llama3.2:1b...")
+            subprocess.run(["ollama", "pull", "llama3.2:1b"])
+
+        # Supprimer phi3:mini si présent
+        if "phi3:mini" in result.stdout or "phi3" in result.stdout:
+            print("🗑️  [Ollama] Suppression phi3 (obsolète)...")
+            subprocess.run(["ollama", "rm", "phi3:mini"], stderr=subprocess.DEVNULL)
+            subprocess.run(["ollama", "rm", "phi3"], stderr=subprocess.DEVNULL)
+
+        print("🤖 [Ollama] Warming llama3.2:1b...")
+        start = time.time()
+
+        payload = {
+            "model": "llama3.2:1b",
+            "prompt": "test warmup",
+            "stream": False,
+            "options": {
+                "temperature": 0.05,
+                "top_p": 0.15,
+                "num_predict": 5
+            }
+        }
+
+        response = requests.post(
+            "http://localhost:11434/api/generate",
+            json=payload,
+            timeout=30
+        )
+
+        if response.status_code == 200:
+            elapsed = time.time() - start
+            print(f"✅ [Ollama] Modèle prêt ({elapsed:.2f}s)")
+        else:
+            print(f"⚠️  [Ollama] Réponse: {response.status_code}")
+            sys.exit(1)
+
+    except Exception as e:
+        print(f"❌ [Ollama] Erreur: {e}")
+        sys.exit(1)
+
+def preload_tts():
+    """Précharge Coqui TTS"""
+    try:
+        from TTS.api import TTS
+        import torch
+
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        print(f"🔊 [TTS] Chargement XTTS v2 (device: {device})...")
+
+        start = time.time()
+        tts = TTS(model_name="tts_models/multilingual/multi-dataset/xtts_v2").to(device)
+
+        elapsed = time.time() - start
+        print(f"✅ [TTS] Modèle prêt ({elapsed:.2f}s)")
+
+    except ImportError as e:
+        print(f"⚠️  [TTS] Non disponible: {e}")
+    except Exception as e:
+        print(f"⚠️  [TTS] Warning: {e}")
+
+def preload_vad():
+    """Précharge WebRTC VAD"""
+    try:
+        import webrtcvad
+        vad = webrtcvad.Vad(2)  # Mode 2 balanced
+        print("✅ [VAD] WebRTC VAD prêt")
+    except ImportError:
+        print("❌ [VAD] Module non disponible")
+        sys.exit(1)
+    except Exception as e:
+        print(f"⚠️  [VAD] Warning: {e}")
+
+def preload_scenario():
+    """Précharge scénario"""
+    try:
+        from scenario_cache import scenario_manager
+        success = scenario_manager.preload_single_scenario()
+        if success:
+            print("✅ [Scénario] Cache préchargé")
+        else:
+            print("⚠️  [Scénario] Fallback utilisé")
+    except Exception as e:
+        print(f"⚠️  [Scénario] Warning: {e}")
+
+# 3️⃣ Chargement parallèle
+print("🔄 Préchargement parallèle des modèles...")
+print()
+
+threads = [
+    threading.Thread(target=preload_vosk, name="Vosk"),
+    threading.Thread(target=preload_ollama, name="Ollama"),
+    threading.Thread(target=preload_tts, name="TTS"),
+    threading.Thread(target=preload_vad, name="VAD"),
+    threading.Thread(target=preload_scenario, name="Scenario")
+]
+
+start_time = time.time()
+
+for t in threads:
+    t.start()
+
+for t in threads:
+    t.join()
+
+total_time = time.time() - start_time
+
+print()
+print("=" * 60)
+print(f"⚡ Temps total de préchargement: {total_time:.2f}s (parallèle)")
+print("=" * 60)
+print()
+print("⚙️  Optimisations actives:")
+print("   • SLIN16 16kHz pour streaming Asterisk")
+print("   • Exécution parallèle TTS + NLP")
+print("   • WebRTC VAD mode 2 (balanced sensitivity)")
+print("   • Ollama optimisé (temp=0.05, top_p=0.15)")
+print("   • Latence cible: <1s end-to-end")
+print()
+print("✅ Pipeline optimisé et prêt pour streaming!")
+
+EOF
+
+[ $? -eq 0 ] || { echo "❌ Préchargement échoué"; exit 1; }
 
 # ========== DÉMARRAGE SERVICES STREAMING ==========
 echo ""

@@ -39,8 +39,8 @@ class CallInteraction(Base):
     sentiment = Column(String(20), nullable=True)  # positive, negative, unclear
     confidence = Column(Float, nullable=True)  # Score 0-1
     response_duration = Column(Float, nullable=True)  # en secondes
-    whisper_language = Column(String(10), nullable=True)
-    whisper_metadata = Column(JSONB, nullable=True)
+    whisper_language = Column(String(10), nullable=True)  # OBSOLÈTE (legacy) - Remplacé par Vosk
+    whisper_metadata = Column(JSONB, nullable=True)  # OBSOLÈTE (legacy) - Remplacé par Vosk
     played_at = Column(DateTime, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     

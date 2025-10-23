@@ -44,7 +44,7 @@ FILE_DESCRIPTIONS = {
     "config.py": "Configuration générale du système (BDD, Asterisk, etc.)",
     "logger_config.py": "Configuration centralisée des logs",
     "requirements.txt": "Dépendances Python du projet",
-    "audio_texts.json": "Transcriptions Whisper des fichiers audio du bot",
+    "audio_texts.json": "Textes des fichiers audio du bot",
 
     # Scripts système
     "start_system.sh": "Lance tous les services (robot_ari, API, batch_caller)",
@@ -54,7 +54,7 @@ FILE_DESCRIPTIONS = {
     # Dossier system/
     "system/install.py": "Installation complète du système (Asterisk, PostgreSQL, dépendances)",
     "system/uninstall.py": "Désinstallation complète du système",
-    "system/setup_audio.sh": "Conversion et copie des fichiers audio + transcription Whisper",
+    "system/setup_audio.sh": "Conversion et copie des fichiers audio vers Asterisk",
     "system/import_contacts.py": "Import de contacts depuis CSV vers PostgreSQL",
     "system/export_contacts.py": "Export de contacts depuis PostgreSQL vers CSV",
     "system/launch_campaign.py": "CLI pour lancer des campagnes d'appels",
@@ -71,7 +71,7 @@ FILE_DESCRIPTIONS = {
     "services/__init__.py": "Initialisation du package services",
     "services/call_launcher.py": "Service de lancement d'appels via ARI",
     "services/audio_assembly_service.py": "Assemblage des fichiers audio bot + client en un seul WAV",
-    "services/transcript_service.py": "Génération de transcriptions complètes (JSON et TXT)",
+    # "services/transcript_service.py": "SUPPRIMÉ - Remplacé par post_call_recording_service.py",
     "services/live_asr_vad.py": "Service ASR temps réel avec Vosk + VAD WebRTC",
     "services/nlp_intent.py": "Moteur d'analyse d'intention local avec Ollama",
     "services/amd_service.py": "Service AMD hybride (Asterisk + Python)",

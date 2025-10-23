@@ -9,13 +9,13 @@ from database import get_db
 from models import Call, CallInteraction
 from services.call_launcher import launch_call
 from logger_config import get_logger
+from config import RECORDINGS_PATH
 
 logger = get_logger(__name__)
 
 router = APIRouter()
 
 # Chemins vers les enregistrements
-RECORDINGS_PATH = "/var/spool/asterisk/recording"
 ASSEMBLED_AUDIO_PATH = "assembled_audio"
 TRANSCRIPTS_PATH = "transcripts"
 

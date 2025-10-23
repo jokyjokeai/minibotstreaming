@@ -102,17 +102,82 @@ class ScenarioGenerator:
             "Positif", "Négatif", "Neutre", "Unsure"
         ]
         
-        # Types d'étapes avec navigation numérique  
+        # Types d'étapes avec navigation numérique
         self.step_types = [
             ("intro", "Introduction/Vérification identité (optionnel - toujours → hello)"),
             ("hello", "Présentation agent (si oui → question1, si non → retry)"),
             ("retry", "Tentative récupération (si oui → question1, si non → close_echec)"),
-            ("question", "Question de qualification (1 à 10 questions)"), 
+            ("question", "Question de qualification (1 à 10 questions)"),
             ("rdv", "Proposition de rendez-vous (si oui → confirmation, si non → close_echec)"),
             ("confirmation", "Confirmation d'accord (toujours → close_success)"),
             ("close_success", "Fermeture succès"),
             ("close_echec", "Fermeture échec")
         ]
+
+    def _generate_audio_texts_json(self):
+        """
+        Génère audio_texts.json avec les durées des fichiers audio
+        Utilisé pour le clonage vocal (sélection fichiers > 3 secondes)
+        """
+        import subprocess
+
+        audio_texts = {}
+        audio_texts_path = self.project_dir / "audio_texts.json"
+
+        # Vérifier que le répertoire audio existe
+        if not self.audio_dir.exists():
+            print(f"   ⚠️  Répertoire audio/ non trouvé, création...")
+            self.audio_dir.mkdir(exist_ok=True)
+            print(f"   💡 Placez vos fichiers audio WAV dans: {self.audio_dir}")
+            return
+
+        # Scanner tous les fichiers .wav du répertoire audio/
+        wav_files = sorted(self.audio_dir.glob("*.wav"))
+
+        if not wav_files:
+            print(f"   ⚠️  Aucun fichier WAV trouvé dans audio/")
+            print(f"   💡 Placez vos fichiers audio WAV dans: {self.audio_dir}")
+            return
+
+        print(f"   📁 Analyse de {len(wav_files)} fichier(s) audio...")
+
+        # Traiter chaque fichier WAV
+        for wav_file in wav_files:
+            filename = wav_file.stem  # Sans extension
+
+            # Obtenir la durée avec soxi -D
+            try:
+                result = subprocess.run(
+                    ["soxi", "-D", str(wav_file)],
+                    capture_output=True,
+                    text=True,
+                    check=False
+                )
+                duration = float(result.stdout.strip()) if result.returncode == 0 else 0.0
+            except Exception as e:
+                self.logger.warning(f"Impossible de lire durée de {filename}: {e}")
+                duration = 0.0
+
+            # Ajouter au dictionnaire
+            audio_texts[filename] = {
+                "file": f"{filename}.wav",
+                "duration": round(duration, 1),
+                "text": f"[Audio {filename} - Transcription via streaming en temps réel]",
+                "source": "Audio de base"
+            }
+
+            print(f"      ✅ {filename}.wav (durée: {duration:.1f}s)")
+
+        # Sauvegarder dans audio_texts.json
+        try:
+            with open(audio_texts_path, 'w', encoding='utf-8') as f:
+                json.dump(audio_texts, f, indent=2, ensure_ascii=False)
+
+            print(f"   ✅ audio_texts.json créé avec {len(audio_texts)} fichier(s)")
+            print(f"   🎙️  Fichiers > 3s seront utilisés pour le clonage vocal")
+        except Exception as e:
+            self.logger.error(f"Erreur sauvegarde audio_texts.json: {e}")
+            print(f"   ❌ Erreur lors de la sauvegarde: {e}")
 
     @log_function_call(include_args=False)
     def start_interactive_creation(self):
@@ -121,7 +186,11 @@ class ScenarioGenerator:
         print("🎭 GÉNÉRATEUR DE SCÉNARIOS MINIBOTPANEL V2")
         print("   Création interactive avec variables, barge-in et TTS")
         print("=" * 70 + f"{Colors.NC}\n")
-        
+
+        # 0. Génération automatique d'audio_texts.json (AVANT TOUT)
+        print(f"{Colors.YELLOW}🔊 Analyse des fichiers audio pour clonage vocal...{Colors.NC}")
+        self._generate_audio_texts_json()
+
         # 1. Informations générales
         self._collect_general_info()
         
@@ -244,6 +313,55 @@ class ScenarioGenerator:
         # Génération automatique d'objections
         self._generate_objections()
 
+    def _ask_audio_or_tts(self, context_label: str) -> Dict[str, Any]:
+        """Demande si on utilise audio préenregistré ou TTS
+
+        Args:
+            context_label: Label pour le contexte (ex: "objection", "FAQ")
+
+        Returns:
+            Dict avec "mode": "audio" ou "tts", et "audio_file" si mode audio
+        """
+        print(f"\n🎙️ Mode audio pour {context_label}:")
+        print("   1. Fichier audio préenregistré (dans audio/)")
+        print("   2. TTS avec voix clonée (génération automatique)")
+
+        choice = input("Choix [2]: ").strip() or "2"
+
+        if choice == "1":
+            # Lister les fichiers audio disponibles
+            wav_files = sorted(self.audio_dir.glob("*.wav"))
+
+            if not wav_files:
+                print(f"   ⚠️  Aucun fichier WAV dans audio/, basculement sur TTS")
+                return {"mode": "tts", "tts_enabled": True}
+
+            print(f"\n📁 Fichiers audio disponibles:")
+            for i, wav_file in enumerate(wav_files, 1):
+                print(f"   {i}. {wav_file.name}")
+
+            file_choice = input(f"\nNuméro du fichier [0=TTS]: ").strip()
+
+            try:
+                file_idx = int(file_choice) - 1
+                if 0 <= file_idx < len(wav_files):
+                    selected_file = wav_files[file_idx].stem  # Sans .wav
+                    print(f"   ✅ Fichier sélectionné: {selected_file}.wav")
+                    return {
+                        "mode": "audio",
+                        "audio_file": f"{selected_file}.wav",
+                        "tts_enabled": False
+                    }
+            except:
+                pass
+
+            # Fallback sur TTS
+            print(f"   ⚠️  Choix invalide, basculement sur TTS")
+            return {"mode": "tts", "tts_enabled": True}
+
+        # Par défaut : TTS
+        return {"mode": "tts", "tts_enabled": True}
+
     def _generate_objections(self):
         """Génère automatiquement les objections courantes et collecte les réponses"""
         print(f"\n{Colors.YELLOW}🚫 GESTION D'OBJECTIONS AUTOMATIQUE{Colors.NC}")
@@ -306,53 +424,65 @@ class ScenarioGenerator:
         for objection in objections:
             print(f"\n{Colors.RED}🚫 Objection: '{objection}'{Colors.NC}")
             user_response = input(f"💬 Votre réponse: ").strip()
-            
+
             if user_response:
                 # Utiliser Ollama pour enrichir la réponse
                 enriched_responses = self._enrich_response_with_ollama(
-                    objection, 
-                    user_response, 
+                    objection,
+                    user_response,
                     self.current_scenario
                 )
-                
+
                 # Présenter les options à l'utilisateur
                 selected_responses = self._validate_ollama_responses(
-                    objection, 
-                    user_response, 
+                    objection,
+                    user_response,
                     enriched_responses
                 )
-                
+
+                # Demander mode audio (préenregistré ou TTS)
+                audio_config = self._ask_audio_or_tts(f"objection '{objection[:30]}...'")
+
                 objection_responses[objection] = {
                     "primary_response": selected_responses["primary"],
                     "fallback_response": selected_responses["fallback"],
                     "alternatives": selected_responses["alternatives"],
                     "tone": self.current_scenario["agent_personality"][0],
-                    "context": f"Objection sur {self.current_scenario['product_name']}"
+                    "context": f"Objection sur {self.current_scenario['product_name']}",
+                    "audio_mode": audio_config["mode"],
+                    "audio_file": audio_config.get("audio_file", ""),
+                    "tts_enabled": audio_config["tts_enabled"]
                 }
             else:
                 # Cas vide : générer 4 variantes complètes avec Ollama
                 print(f"   🤖 Génération automatique de 4 variantes via Ollama...")
-                
+
                 auto_responses = self._enrich_response_with_ollama(
-                    objection, 
+                    objection,
                     "",  # Réponse vide pour déclencher génération complète
                     self.current_scenario
                 )
-                
+
                 # Présenter les 4 variantes générées
                 selected_responses = self._validate_ollama_responses(
-                    objection, 
-                    "[Génération automatique]", 
+                    objection,
+                    "[Génération automatique]",
                     auto_responses
                 )
-                
+
+                # Demander mode audio (préenregistré ou TTS)
+                audio_config = self._ask_audio_or_tts(f"objection '{objection[:30]}...'")
+
                 objection_responses[objection] = {
                     "primary_response": selected_responses["primary"],
                     "fallback_response": selected_responses["fallback"],
                     "alternatives": selected_responses["alternatives"],
                     "tone": self.current_scenario["agent_personality"][0],
                     "context": f"Objection sur {self.current_scenario['product_name']} (auto-généré)",
-                    "auto_generated": True
+                    "auto_generated": True,
+                    "audio_mode": audio_config["mode"],
+                    "audio_file": audio_config.get("audio_file", ""),
+                    "tts_enabled": audio_config["tts_enabled"]
                 }
         
         self.current_scenario["objection_responses"] = objection_responses
@@ -360,7 +490,7 @@ class ScenarioGenerator:
         # Questions fréquentes
         print(f"\n{Colors.BLUE}❓ QUESTIONS FRÉQUENTES{Colors.NC}")
         print("Ajoutez 2-3 questions que vos prospects posent souvent:")
-        
+
         faq = {}
         for i in range(1, 4):
             question = input(f"❓ Question fréquente {i} (ou Enter pour terminer): ").strip()
@@ -368,8 +498,16 @@ class ScenarioGenerator:
                 break
             answer = input(f"💬 Réponse: ").strip()
             if answer:
-                faq[question] = answer
-        
+                # Demander mode audio (préenregistré ou TTS)
+                audio_config = self._ask_audio_or_tts(f"FAQ '{question[:30]}...'")
+
+                faq[question] = {
+                    "answer": answer,
+                    "audio_mode": audio_config["mode"],
+                    "audio_file": audio_config.get("audio_file", ""),
+                    "tts_enabled": audio_config["tts_enabled"]
+                }
+
         self.current_scenario["faq"] = faq
 
     def _setup_variables(self):
@@ -2047,13 +2185,24 @@ if __name__ == "__main__":
                 print(f"❌ Fichier audio non trouvé: {audio_path}")
                 return None
             
-            # Charger le modèle Vosk (français)
-            model_path = Path(self.scenarios_dir.parent / "vosk-model-fr")
-            if not model_path.exists():
-                print("⚠️ Modèle Vosk français non trouvé dans vosk-model-fr/")
-                print("💡 Téléchargez: https://alphacephei.com/vosk/models")
+            # Charger le modèle Vosk (français) - cherche à plusieurs endroits
+            model_paths = [
+                Path("/opt/minibot/models/vosk-fr"),  # Installation VPS
+                Path("/var/lib/vosk-models/vosk-fr-small"),  # Fallback
+                Path(self.scenarios_dir.parent / "vosk-model-fr")  # Dev local
+            ]
+
+            model_path = None
+            for path in model_paths:
+                if path.exists():
+                    model_path = path
+                    break
+
+            if not model_path:
+                print("⚠️ Modèle Vosk français non trouvé")
+                print("💡 Installez via: sudo python3 system/install_hybrid.py")
                 return None
-            
+
             model = vosk.Model(str(model_path))
             
             # Ouvrir le fichier audio

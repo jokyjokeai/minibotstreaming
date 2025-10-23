@@ -72,7 +72,7 @@ def log(msg: str, level: str = "info"):
     # Log au fichier aussi
     getattr(logging, level.lower(), logging.info)(msg)
 
-def run_cmd(cmd: str, description: str = "", check: bool = True, timeout: int = 300):
+def run_cmd(cmd: str, description: str = "", check: bool = True, timeout: int = 3600):
     """Exécute une commande avec logging et gestion d'erreurs"""
     if description:
         log(f"🔧 {description}")
@@ -261,36 +261,74 @@ class AsteriskInstaller:
     def download_asterisk(self):
         """Télécharge Asterisk 22"""
         log(f"📥 Downloading Asterisk {self.asterisk_version}")
-        
+
         # Nettoyage complet d'abord
         self.clean_previous_installation()
-        
+
         # Supprimer code source précédent
         if os.path.exists(self.install_dir):
             run_cmd(f"rm -rf {self.install_dir}", "Removing previous source installation")
-        
+
         # Télécharger Asterisk 22.6.0 LTS stable (version exacte pour streaming/IA)
         exact_version = "22.6.0"
+        tarball = f"asterisk-{exact_version}.tar.gz"
+
+        # Nettoyer les téléchargements corrompus précédents
+        run_cmd(f"rm -f {tarball}", "Cleaning previous download", check=False)
+        run_cmd(f"rm -rf asterisk-{exact_version}", "Cleaning previous extraction", check=False)
+
+        # Liste de miroirs à essayer
+        mirrors = [
+            f"https://downloads.asterisk.org/pub/telephony/asterisk/asterisk-{exact_version}.tar.gz",
+            f"https://github.com/asterisk/asterisk/releases/download/{exact_version}/asterisk-{exact_version}.tar.gz",
+            "https://downloads.asterisk.org/pub/telephony/asterisk/asterisk-22-current.tar.gz"
+        ]
+
+        download_success = False
+        for mirror_url in mirrors:
+            log(f"🔄 Trying mirror: {mirror_url}")
+
+            # Télécharger avec retry et vérification (timeout augmenté pour connexion lente)
+            result = run_cmd(
+                f"wget --progress=bar:force --tries=3 --timeout=1800 --continue '{mirror_url}' -O {tarball}",
+                f"Downloading Asterisk {exact_version} LTS",
+                timeout=3600,
+                check=False
+            )
+
+            if result.returncode == 0:
+                # Vérifier l'intégrité du fichier téléchargé
+                log("🔍 Verifying download integrity...")
+                verify = run_cmd(f"tar -tzf {tarball} | head -1", "Checking tarball integrity", check=False)
+
+                if verify.returncode == 0:
+                    log(f"✅ Download successful from {mirror_url}")
+                    download_success = True
+                    break
+                else:
+                    log(f"❌ Downloaded file is corrupted, trying next mirror...")
+                    run_cmd(f"rm -f {tarball}", check=False)
+            else:
+                log(f"❌ Download failed from {mirror_url}, trying next mirror...")
+                run_cmd(f"rm -f {tarball}", check=False)
+
+        if not download_success:
+            raise Exception("Failed to download Asterisk from all mirrors")
+
+        # Extraction
         run_cmd(
-            f"wget -q https://github.com/asterisk/asterisk/releases/download/{exact_version}/asterisk-{exact_version}.tar.gz",
-            f"Downloading Asterisk {exact_version} LTS stable release",
-            timeout=300
-        )
-        
-        exact_version = "22.6.0"
-        run_cmd(
-            f"tar -xzf asterisk-{exact_version}.tar.gz",
+            f"tar -xzf {tarball}",
             f"Extracting Asterisk {exact_version}",
             timeout=60
         )
-        
+
         # Répertoire extrait avec version exacte
         extracted_dir = f"asterisk-{exact_version}"
         if os.path.exists(self.install_dir):
             run_cmd(f"rm -rf {self.install_dir}", "Removing existing directory")
-        
+
         run_cmd(f"mv {extracted_dir} {self.install_dir}", "Moving to install directory")
-        
+
         os.chdir(self.install_dir)
     
     def configure_asterisk(self):
@@ -320,7 +358,7 @@ class AsteriskInstaller:
         if os.path.exists("/usr/lib64"):
             configure_cmd += " --libdir=/usr/lib64"
             
-        run_cmd(configure_cmd, "Running configure script with PJSIP fixes", timeout=300)
+        run_cmd(configure_cmd, "Running configure script with PJSIP fixes", timeout=1800)
         
         # Menu selection automatique
         self.setup_menuselect()
@@ -398,13 +436,13 @@ class AsteriskInstaller:
         """Installe Asterisk"""
         log("📦 Installing Asterisk system-wide")
         
-        run_cmd("make install", "Installing binaries", timeout=300)
-        run_cmd("make samples", "Installing sample configs", timeout=60)
+        run_cmd("make install", "Installing binaries", timeout=1800)
+        run_cmd("make samples", "Installing sample configs", timeout=600)
         
         # NOUVELLE APPROCHE: Garder les configs de base et merger les nôtres
         log("📋 Keeping base configs and will merge our configurations later")
         
-        run_cmd("make progdocs", "Installing documentation", check=False, timeout=300)
+        run_cmd("make progdocs", "Installing documentation", check=False, timeout=1800)
     
     def configure_service(self):
         """Configure le service systemd"""
@@ -494,7 +532,7 @@ class StreamingServicesInstaller:
         if not fr_small_path.exists():
             log("📥 Downloading French Vosk model (small)")
             
-            run_cmd(f"wget -O /tmp/vosk-fr-linto.zip {fr_small_url}", timeout=600)
+            run_cmd(f"wget -O /tmp/vosk-fr-linto.zip {fr_small_url}", timeout=3600)
             run_cmd("cd /tmp && unzip -q vosk-fr-linto.zip")
             run_cmd(f"mv /tmp/vosk-model-fr-* {fr_small_path}")
             run_cmd("rm -f /tmp/vosk-fr-linto.zip")
@@ -517,11 +555,11 @@ class StreamingServicesInstaller:
             log("ℹ️ Ollama already installed")
             return
         
-        # Installation officielle
+        # Installation officielle (timeout augmenté pour connexion lente)
         run_cmd(
             "curl -fsSL https://ollama.ai/install.sh | sh",
             "Installing Ollama",
-            timeout=300
+            timeout=3600
         )
         
         # Démarrer le service
@@ -539,8 +577,8 @@ class StreamingServicesInstaller:
         
         for model in models:
             try:
-                log(f"📥 Downloading {model}")
-                run_cmd(f"ollama pull {model}", f"Downloading {model}", timeout=1200)
+                log(f"📥 Downloading {model} (peut prendre jusqu'à 30 min avec connexion lente)")
+                run_cmd(f"ollama pull {model}", f"Downloading {model}", timeout=3600)
                 log(f"✅ {model} downloaded")
             except:
                 log(f"⚠️ Failed to download {model}", "warning")
@@ -1091,11 +1129,11 @@ class StreamingInstaller:
             log(f"📂 Looking for: {requirements_file}", "error")
             raise Exception("requirements.txt missing")
         
-        # Installation avec pip (utiliser le chemin absolu)
+        # Installation avec pip (utiliser le chemin absolu, timeout augmenté pour connexion lente)
         run_cmd(
             f"pip3 install -r {requirements_file}",
-            "Installing Python packages",
-            timeout=1200
+            "Installing Python packages (peut prendre jusqu'à 30 min avec connexion lente)",
+            timeout=3600
         )
         
         log("✅ Python dependencies installed")
@@ -1781,7 +1819,7 @@ except Exception as e:
             if result.returncode == 0:
                 if "llama3.2:1b" not in result.stdout:
                     log("📥 Installing optimized model llama3.2:1b for streaming")
-                    run_cmd("ollama pull llama3.2:1b", timeout=600)
+                    run_cmd("ollama pull llama3.2:1b", timeout=3600)
                 else:
                     log("✅ Optimal model llama3.2:1b already available")
             
@@ -1991,14 +2029,14 @@ net.core.netdev_max_backlog = 5000
                 gpu_available = run_cmd("nvidia-smi", check=False).returncode == 0
                 
                 if gpu_available:
-                    log("🚀 GPU detected, installing with CUDA support")
-                    run_cmd("pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118", timeout=900)
+                    log("🚀 GPU detected, installing with CUDA support (peut prendre 30+ min)")
+                    run_cmd("pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118", timeout=3600)
                 else:
-                    log("💻 CPU-only installation")
-                    run_cmd("pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu", timeout=900)
-                
-                # Installation TTS et autres dépendances
-                run_cmd("pip3 install TTS transformers datasets accelerate", timeout=600)
+                    log("💻 CPU-only installation (peut prendre 30+ min)")
+                    run_cmd("pip3 install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu", timeout=3600)
+
+                # Installation TTS et autres dépendances (peut prendre 30+ min)
+                run_cmd("pip3 install TTS transformers datasets accelerate", timeout=3600)
                 
                 # Vérification finale
                 result = run_cmd("python3 -c 'import TTS; print(\"TTS successfully installed\")'", check=False)
