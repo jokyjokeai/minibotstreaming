@@ -1767,10 +1767,10 @@ except Exception as e:
         with open(test_script_path, "w") as f:
             f.write(test_script)
         
-        # Exécuter le test
-        result = run_cmd(f"python3 {test_script_path}", 
-                        "Testing TTS voice synthesis", 
-                        timeout=60, 
+        # Exécuter le test (timeout 30min pour téléchargement modèle initial)
+        result = run_cmd(f"python3 {test_script_path}",
+                        "Testing TTS voice synthesis",
+                        timeout=1800, 
                         check=False)
         
         if result.returncode == 0 and "SUCCESS" in result.stdout:
@@ -2043,11 +2043,11 @@ net.core.netdev_max_backlog = 5000
                 if result.returncode != 0:
                     log("⚠️ TTS installation may need manual intervention", "warning")
             
-            # Tester le service TTS
+            # Tester le service TTS (timeout 30min pour premier téléchargement modèle)
             tts_test_script = self.project_dir / "services" / "tts_voice_clone.py"
             if tts_test_script.exists():
                 log("🔧 Testing TTS voice cloning service...")
-                result = run_cmd(f"python3 {tts_test_script}", check=False, timeout=120)
+                result = run_cmd(f"python3 {tts_test_script}", check=False, timeout=1800)
                 if result.returncode == 0:
                     log("✅ TTS voice cloning service operational")
                 else:
